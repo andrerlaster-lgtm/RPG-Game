@@ -51,6 +51,24 @@ const centre = (tx, ty) => ({ x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 }
 const LAMPS = [[6,35],[13,24],[8,28],[20,31],[27,28],[36,31],[44,28],[52,31],[13,12],[22,6],[31,14],[40,8],[48,25],[21,18],[58,33],[41,23],[55,11],[46,14]]
   .map(([x, y]) => ({ ...centre(x, y), r: grid[y][x] === 'f' ? 92 : 128 }));
 
+// Visibility polygon for a light (like Godot's LightOccluder2D): cast rays until they hit a building.
+// Rays go a few pixels into the wall so the façade facing the light still glows.
+function lightPolygon(x, y, r, rays = 160) {
+  const pts = [];
+  for (let i = 0; i < rays; i++) {
+    const a = (i / rays) * Math.PI * 2;
+    const cx = Math.cos(a), cy = Math.sin(a);
+    let d = 0;
+    for (; d < r; d += 4) {
+      if (tileAt(x + cx * d, y + cy * d) === '#') { d += 10; break; }
+    }
+    d = Math.min(d, r);
+    pts.push(x + cx * d, y + cy * d);
+  }
+  return pts;
+}
+LAMPS.forEach((l) => { l.poly = lightPolygon(l.x, l.y, l.r); });
+
 const VAULTS = [{ wall: centre(38, 16), a: centre(37, 16), b: centre(39, 16) }];
 const BOAT = { x: 60 * TILE + 16, y: 33 * TILE + 16 };
 const KID = { ...centre(57, 34), helped: false };
@@ -225,6 +243,35 @@ window.addEventListener('keydown', (e) => {
   if ((k === 'p' || (k === 'escape' && state.mode !== 'battle')) && state.running && !state.over) togglePause();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+
+// Input map (like Godot's InputMap): gamepad buttons feed the same actions as keys.
+// Standard layout: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 9 Start, 12-15 d-pad.
+const PAD_MAP = {
+  field: { 0: 'e', 1: ' ', 2: 'q', 4: 'shift', 5: 'shift', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
+  battle: { 0: 'enter', 1: 'escape', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' }
+};
+const padHeld = new Set();
+function pollGamepad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const pad = Array.from(pads || []).find((g) => g && g.connected);
+  const now = new Set();
+  if (pad) {
+    const map = PAD_MAP[state.mode === 'battle' ? 'battle' : 'field'];
+    pad.buttons.forEach((b, i) => { if (b.pressed && map[i]) now.add(map[i]); });
+    const [ax = 0, ay = 0] = pad.axes;
+    const dead = 0.45;
+    if (ax < -dead) now.add('arrowleft');
+    if (ax > dead) now.add('arrowright');
+    if (ay < -dead) now.add('arrowup');
+    if (ay > dead) now.add('arrowdown');
+  }
+  for (const k of now) if (!padHeld.has(k)) { pressed.add(k); keys.add(k); }
+  for (const k of padHeld) if (!now.has(k)) keys.delete(k);
+  padHeld.clear();
+  now.forEach((k) => padHeld.add(k));
+  if (pressed.has('p') && now.has('p') && state.running && !state.over) togglePause();
+}
+window.addEventListener('gamepadconnected', () => toast('Controller connected', 1500));
 window.addEventListener('blur', () => { keys.clear(); if (state.running && !state.over && !state.paused) togglePause(); });
 canvas.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true; });
 canvas.addEventListener('mousedown', (e) => {
@@ -461,6 +508,7 @@ function knockOut(g, silent) {
   g.meter = 0;
   state.kos += 1;
   effect('ko', g.x, g.y);
+  shake(0.2);
   sfx(silent ? 140 : 110, 0.15, 'triangle', 0.07, -60);
   if (!silent) noise(g.x, g.y, 120);
   else noise(g.x, g.y, 50);
@@ -504,6 +552,7 @@ function raiseAlarm(g) {
     state.alarms += 1;
     sfx(180, 0.35, 'sawtooth', 0.05, 220);
     toast('Spotted!', 1100);
+    shake(0.45);
   }
   g.state = 'alert';
   g.meter = 1;
@@ -639,18 +688,31 @@ function updateGuard(g, dt) {
 }
 
 // ---------- Rendering ----------
-let camX = 0, camY = 0;
-function updateCamera() {
+let camX = 0, camY = 0, shakeX = 0, shakeY = 0;
+const CAMERA_SMOOTHING = 6; // Godot Camera2D position_smoothing_speed
+let trauma = 0;
+function shake(amount) { trauma = Math.min(1, trauma + amount); }
+function updateCamera(dt = 0, snap = false) {
   const p = state.player;
   const viewW = vw / zoom, viewH = vh / zoom;
   // On touch screens the thumb controls cover the bottom of the view, so keep ZAY in the upper part
   // and let the camera scroll past the map's bottom edge.
   const controls = isTouch ? (vh * 0.34) / zoom : 0;
-  camX = Math.max(0, Math.min(W * TILE - viewW, p.x - viewW / 2));
-  camY = Math.max(0, Math.min(H * TILE - viewH + controls, p.y - (viewH - controls) / 2));
+  const targetX = Math.max(0, Math.min(W * TILE - viewW, p.x - viewW / 2));
+  const targetY = Math.max(0, Math.min(H * TILE - viewH + controls, p.y - (viewH - controls) / 2));
+  // Camera2D smoothing: pos += (target - pos) * speed * delta
+  const c = snap ? 1 : Math.min(1, CAMERA_SMOOTHING * dt);
+  camX += (targetX - camX) * c;
+  camY += (targetY - camY) * c;
+  // Trauma-based shake that fades out
+  trauma = Math.max(0, trauma - dt * 1.6);
+  const k = trauma * trauma * 7;
+  shakeX = (Math.random() * 2 - 1) * k;
+  shakeY = (Math.random() * 2 - 1) * k;
   mouse.wx = camX + mouse.x / zoom;
   mouse.wy = camY + mouse.y / zoom;
 }
+const camLeft = () => camX + shakeX, camTop = () => camY + shakeY;
 const inView = (x, y, m = 160) => x > camX - m && y > camY - m && x < camX + vw / zoom + m && y < camY + vh / zoom + m;
 
 function render() {
@@ -658,7 +720,7 @@ function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#07080f';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.setTransform(s, 0, 0, s, -camX * s, -camY * s);
+  ctx.setTransform(s, 0, 0, s, -camLeft() * s, -camTop() * s);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(mapCanvas, 0, 0);
   ctx.imageSmoothingEnabled = true;
@@ -676,41 +738,55 @@ function render() {
   dctx.clearRect(0, 0, dark.width, dark.height);
   dctx.fillStyle = 'rgba(6,8,24,0.7)';
   dctx.fillRect(0, 0, dark.width, dark.height);
-  dctx.setTransform(s, 0, 0, s, -camX * s, -camY * s);
+  dctx.setTransform(s, 0, 0, s, -camLeft() * s, -camTop() * s);
   dctx.globalCompositeOperation = 'destination-out';
   const flick = 1 + Math.sin(state.time * 9) * 0.02;
-  for (const l of LAMPS) if (inView(l.x, l.y, l.r)) cutLight(l.x, l.y, l.r * flick, 1);
-  for (const g of state.guards) if (g.state !== 'down' && inView(g.x, g.y)) cutLight(g.x + Math.cos(g.dir) * 10, g.y + Math.sin(g.dir) * 10, 66, 0.9);
+  for (const l of LAMPS) if (inView(l.x, l.y, l.r)) cutLight(l.x, l.y, l.r * flick, 1, l.poly);
+  for (const g of state.guards) {
+    if (g.state === 'down' || !inView(g.x, g.y)) continue;
+    const lx = g.x + Math.cos(g.dir) * 10, ly = g.y + Math.sin(g.dir) * 10;
+    cutLight(lx, ly, 66, 0.9, lightPolygon(lx, ly, 66, 48));
+  }
   const p = state.player;
   cutLight(p.x, p.y, 54, 0.45);
   cutLight(BOAT.x, BOAT.y, 70, 0.6);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(dark, 0, 0);
-  ctx.setTransform(s, 0, 0, s, -camX * s, -camY * s);
+  ctx.setTransform(s, 0, 0, s, -camLeft() * s, -camTop() * s);
 
   // Warm glows and emissive bits over the dark
   ctx.globalCompositeOperation = 'lighter';
-  for (const l of LAMPS) if (inView(l.x, l.y, l.r)) glow(l.x, l.y, l.r * 0.85, 'rgba(233,170,80,0.2)');
+  for (const l of LAMPS) if (inView(l.x, l.y, l.r)) glow(l.x, l.y, l.r * 0.85, 'rgba(233,170,80,0.2)', l.poly);
   ctx.globalCompositeOperation = 'source-over';
   for (const w of WINDOWS) if (inView(w.x, w.y, 40)) { ctx.fillStyle = 'rgba(240,190,110,0.78)'; ctx.fillRect(w.x, w.y, w.w, w.h); ctx.fillStyle = 'rgba(60,35,20,.9)'; ctx.fillRect(w.x + 3.5, w.y, 1, w.h); }
   for (const l of LAMPS) if (inView(l.x, l.y, 40)) drawLamp(l.x, l.y);
   drawEffects();
   drawObjectiveArrow();
 }
-function cutLight(x, y, r, strength) {
+function tracePoly(c, poly) {
+  c.beginPath();
+  c.moveTo(poly[0], poly[1]);
+  for (let i = 2; i < poly.length; i += 2) c.lineTo(poly[i], poly[i + 1]);
+  c.closePath();
+}
+function cutLight(x, y, r, strength, poly) {
   const g = dctx.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, `rgba(0,0,0,${strength})`);
   g.addColorStop(0.55, `rgba(0,0,0,${strength * 0.7})`);
   g.addColorStop(1, 'rgba(0,0,0,0)');
   dctx.fillStyle = g;
-  dctx.beginPath(); dctx.arc(x, y, r, 0, Math.PI * 2); dctx.fill();
+  if (poly) tracePoly(dctx, poly);
+  else { dctx.beginPath(); dctx.arc(x, y, r, 0, Math.PI * 2); }
+  dctx.fill();
 }
-function glow(x, y, r, color) {
+function glow(x, y, r, color, poly) {
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, color);
   g.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  if (poly) tracePoly(ctx, poly);
+  else { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); }
+  ctx.fill();
 }
 function drawLamp(x, y) {
   ctx.fillStyle = '#121019';
@@ -891,7 +967,7 @@ function drawPlayer() {
 }
 function drawEffects() {
   for (const e of state.effects) {
-    const k = e.t;
+    const k = Math.max(0, e.t);
     if (e.kind === 'noise') {
       ctx.strokeStyle = `rgba(243,215,154,${0.35 * (1 - k / 0.6)})`;
       ctx.lineWidth = 1.5;
@@ -1002,6 +1078,8 @@ function start() {
   hudEls.hud.hidden = false;
   document.getElementById('touch').hidden = !isTouch;
   toast('The Soot Quarter. Veyrane’s estate is north-east, past the lanterns.', 3000);
+  trauma = 0;
+  updateCamera(0, true);
   updateHud();
 }
 function togglePause() {
@@ -1018,6 +1096,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
+  pollGamepad();
   if (state.running && !state.paused) {
     state.time += dt;
     if (state.mode === 'battle') updateBattle(dt);
@@ -1033,7 +1112,7 @@ function frame(now) {
   pressed.clear();
   if (state.mode === 'battle') renderBattle();
   else {
-    updateCamera();
+    updateCamera(dt);
     render();
   }
   requestAnimationFrame(frame);

@@ -24,6 +24,15 @@ const bui = {
 
 const randBetween = (a, b) => a + Math.random() * (b - a);
 
+// Easing curves ported from Godot's scene/animation/easing_equations.h (Tween transitions),
+// normalised to t in 0..1.
+const Ease = {
+  backOut: (t) => { const s = 1.70158; t -= 1; return t * t * ((s + 1) * t + s) + 1; },
+  expoOut: (t) => (t >= 1 ? 1 : 1.001 * (1 - Math.pow(2, -10 * t))),
+  cubicOut: (t) => { t -= 1; return t * t * t + 1; },
+  sineInOut: (t) => -(Math.cos(Math.PI * t) - 1) / 2
+};
+
 // ---------- Start / end ----------
 function startBattle(trigger) {
   const p = state.player;
@@ -186,6 +195,7 @@ function damage(atk, def, scale = 1) {
 function hurt(target, amount, crit) {
   target.hp = Math.max(0, target.hp - amount);
   target.flash = 0.25;
+  B.shake = Math.min(1, (B.shake || 0) + (crit ? 0.55 : 0.28));
   popup(target, String(amount) + (crit ? '!' : ''), crit ? '#ffe08a' : '#ffffff');
   if (target.hp === 0) {
     target.alive = false;
@@ -306,6 +316,7 @@ function handleBattleInput() {
 
 function updateBattle(dt) {
   B.t += dt;
+  B.shake = Math.max(0, (B.shake || 0) - dt * 2.2);
   B.popups.forEach((p) => { p.t += dt; });
   B.popups = B.popups.filter((p) => p.t < 1.1);
   B.fx.forEach((f) => { f.t += dt; });
@@ -447,7 +458,11 @@ function battlePositions(areaH) {
 function renderBattle() {
   const areaH = Math.max(200, vh - (bui.root.offsetHeight || 0));
   const s = Math.max(0.8, Math.min(1.7, areaH / 320));
+  const quake = (B.shake || 0) ** 2 * 8;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#07080f';
+  ctx.fillRect(0, 0, vw, vh);
+  ctx.setTransform(dpr, 0, 0, dpr, (Math.random() * 2 - 1) * quake * dpr, (Math.random() * 2 - 1) * quake * dpr);
   // Night sky over the Crown Quarter
   const sky = ctx.createLinearGradient(0, 0, 0, areaH);
   sky.addColorStop(0, '#0a0d24');
@@ -490,7 +505,9 @@ function renderBattle() {
   const a = B.anim;
   const lunge = (c) => {
     if (!a || a.actor !== c || a.type === 'magic' || a.type === 'item' || a.type === 'run') return 0;
-    return Math.sin(Math.PI * Math.min(1, a.t / a.dur)) * 46 * s * (c.side === 'enemy' ? 1 : -1);
+    const k = Math.min(1, a.t / a.dur);
+    const reach = k < 0.45 ? Ease.backOut(k / 0.45) : k < 0.6 ? 1 : 1 - Ease.sineInOut((k - 0.6) / 0.4);
+    return reach * 46 * s * (c.side === 'enemy' ? 1 : -1);
   };
   for (const e of B.enemies) {
     if (e.fade >= 1) continue;
@@ -539,12 +556,12 @@ function renderBattle() {
   ctx.textAlign = 'center';
   for (const p of B.popups) {
     const k = p.t / 1.1;
-    ctx.font = `800 ${Math.round(20 * s)}px Barlow, sans-serif`;
+    ctx.font = `800 ${Math.round(20 * s * (0.6 + 0.4 * Ease.backOut(Math.min(1, k * 4))))}px Barlow, sans-serif`;
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(0,0,0,.8)';
     ctx.fillStyle = p.color;
     ctx.globalAlpha = 1 - Math.max(0, k - 0.6) / 0.4;
-    const y = p.target.by - 54 * s - Math.min(1, k * 3) * 16 * s;
+    const y = p.target.by - 54 * s - Ease.expoOut(Math.min(1, k * 1.6)) * 22 * s;
     ctx.strokeText(p.text, p.target.bx, y);
     ctx.fillText(p.text, p.target.bx, y);
     ctx.globalAlpha = 1;
@@ -552,7 +569,7 @@ function renderBattle() {
 
   // Encounter swirl
   if (B.intro > 0) {
-    const k = B.intro / 0.9;
+    const k = Ease.sineInOut(Math.max(0, B.intro / 0.9));
     ctx.fillStyle = `rgba(255,255,255,${Math.max(0, k - 0.6) * 2})`;
     ctx.fillRect(0, 0, vw, vh);
     ctx.save();

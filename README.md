@@ -12,14 +12,16 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 - **Stealth:** lantern light makes you easy to see; shadows halve how far guards can see you; garden hedges hide you. A ring over each guard fills while they can see you; when it's full they raise the alarm and nearby guards come running.
 - **No casualties:** every takedown and every battle win is a knockout.
 
-| Action | Keyboard / mouse | Touch |
-|---|---|---|
-| Move | Arrow keys | Arrow pad |
-| Sprint (noisy) | Shift | Hold Sprint |
-| Takedown from behind, tail-vault the estate wall, grab the ledger, give coin | E | Use |
-| Throw a card (noise lure; stuns on a direct hit) | Q or right-click (aims at the cursor) | Card (throws where you face) |
-| Roll | Space | Roll |
-| Pause | Esc or P | II button |
+| Action | Keyboard / mouse | Touch | Controller |
+|---|---|---|---|
+| Move | Arrow keys | Arrow pad | D-pad or left stick |
+| Sprint (noisy) | Shift | Hold Sprint | Hold LB or RB |
+| Takedown from behind, tail-vault the estate wall, grab the ledger, give coin | E | Use | A |
+| Throw a card (noise lure; stuns on a direct hit) | Q or right-click (aims at the cursor) | Card (throws where you face) | X |
+| Roll | Space | Roll | B |
+| Pause | Esc or P | II button | Start |
+
+In battles a controller uses the d-pad to choose, **A** to confirm and **B** to go back.
 
 ## Battles (Final Fantasy style)
 
@@ -33,6 +35,15 @@ If an alerted guard catches ZAY, the screen switches to a battle: guards on the 
 The party is just ZAY for now. To add a character, edit `characters.js`: add an entry to `CHARACTERS` with a class (`rogue`, `caster` or `sword`) and put its id in `STARTING_PARTY` (up to 4). Spells, items and enemy stats live in the same file.
 
 Your end rating depends on how often you were spotted and how many guards you knocked out: **Ghost of the Lantern Quarter** (never spotted, no knockouts), **Shadow**, **Rogue**, or **Brawler**.
+
+## Borrowed from Godot
+
+Techniques from the [Godot Engine](https://github.com/godotengine/godot) (MIT), re-written in this game's JavaScript:
+
+- **Camera2D smoothing:** the camera eases toward ZAY (`pos += (target − pos) × speed × delta`) and shakes when you're spotted or a guard goes down.
+- **Light2D + LightOccluder2D:** each lamp's light is clipped by the buildings around it, so light doesn't leak through walls.
+- **Tween easing:** battle lunges, damage numbers and the encounter swirl use Godot's back, expo, cubic and sine curves (`scene/animation/easing_equations.h`).
+- **InputMap:** controller buttons feed the same actions as the keyboard, with a different mapping in battles.
 
 ## Run it
 
