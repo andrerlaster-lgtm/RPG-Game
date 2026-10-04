@@ -19,6 +19,7 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 | Takedown from behind, tail-vault the estate wall, grab the ledger, give coin | E | Use | A |
 | Throw a card (noise lure; stuns on a direct hit) | Q or right-click (aims at the cursor) | Card (throws where you face) | X |
 | Roll | Space | Roll | B |
+| Bag (inventory) | I or Tab | Bag button (top) | Y |
 | Pause | Esc or P | II button | Start |
 
 In battles a controller uses the d-pad to choose, **A** to confirm and **B** to go back.
@@ -32,6 +33,18 @@ If an alerted guard catches ZAY, the screen switches to a battle: guards on the 
 - **Controls:** ↑/↓ choose, Enter (or Z/E/Space) confirm, Esc (or X/Backspace) back. On touch, tap a command, then tap a target.
 - Win and the guards are knocked out on the map. Run (60% chance) leaves them stunned for a few seconds. If the whole party falls, ZAY is caught.
 
+**Fighting UI:** a help window at the top describes the highlighted command, spell or item; while you pick a target it shows that target's HP bar (and "Pockets full/empty" when stealing). The party window shows level, HP and MP bars and the time gauge. Winning shows EXP, gold, items found and any level-ups with their stat gains.
+
+**Items in battle:** Potion (60 HP), Hi-Potion (150 HP), Ether (25 MP), Smelling Salts (revive at 30% HP), Smoke Bomb (guaranteed escape).
+
+## Bag, equipment and levels
+
+Press **I** (or the **Bag** button, or **Y** on a controller) to open a Breath of the Wild–style bag: tabs for Supplies, Weapons, Armor and Charms, an item grid, an info panel with stats and description, and ZAY's panel with level, HP, EXP, stats and equipment slots. Selecting gear shows how each stat would change (green up, red down). Use **Q / E** to switch tabs and **Enter** for actions (Use, Equip, Unequip).
+
+- **Starting gear:** Severin's Katana, Rogue Blacks, Mother's Necklace, plus the Twin Daggers (one from Rika, one from Kairo) in the bag.
+- **Chests** on the map hold a Lucky Coin (Steal +20%), a Hi-Potion, Smelling Salts, a Smoke Bomb, and an estate captain's Veyrane Brigandine inside the counting house.
+- **EXP:** guards give 34, captains 62. Each level raises HP and stats (100 × level EXP to the next level).
+
 The party is just ZAY for now. To add a character, edit `characters.js`: add an entry to `CHARACTERS` with a class (`rogue`, `caster` or `sword`) and put its id in `STARTING_PARTY` (up to 4). Spells, items and enemy stats live in the same file.
 
 Your end rating depends on how often you were spotted and how many guards you knocked out: **Ghost of the Lantern Quarter** (never spotted, no knockouts), **Shadow**, **Rogue**, or **Brawler**.
@@ -44,6 +57,8 @@ Techniques from the [Godot Engine](https://github.com/godotengine/godot) (MIT), 
 - **Light2D + LightOccluder2D:** each lamp's light is clipped by the buildings around it, so light doesn't leak through walls.
 - **Tween easing:** battle lunges, damage numbers and the encounter swirl use Godot's back, expo, cubic and sine curves (`scene/animation/easing_equations.h`).
 - **InputMap:** controller buttons feed the same actions as the keyboard, with a different mapping in battles.
+
+The bag, item database, equipment slots, item pickups and level/EXP panel follow the design of [GodotDynamicInventorySystem](https://github.com/alfredbaudisch/GodotDynamicInventorySystem) by Alfred Baudisch (Apache 2.0). Its ideas were re-written here; none of its code, art or sounds were copied.
 
 ## Run it
 
@@ -59,9 +74,10 @@ Then open <http://localhost:5192>.
 
 - `index.html` — screens, HUD, touch controls
 - `style.css` — HUD and screen styling
-- `characters.js` — classes, party, spells, items, enemies
+- `characters.js` — classes, party, spells, item database, equipment, levels, enemies
 - `game.js` — map, lighting, guards, stealth, and the switch into battles
-- `battle.js` — Final Fantasy-style battles (ATB gauges, commands, battle screen)
+- `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)
+- `inventory.js` — the bag screen, item icons, equipping and field item use
 
 ## Preview
 

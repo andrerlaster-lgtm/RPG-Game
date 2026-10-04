@@ -5,11 +5,12 @@
 
 const B = {
   active: false, enemies: [], party: [], anim: null, menu: null, popups: [], fx: [],
-  result: null, guardRefs: [], intro: 0, t: 0, msgT: 0
+  result: null, guardRefs: [], intro: 0, t: 0, msgT: 0, exitT: 0, rewards: null
 };
 
 const bui = {
   root: document.getElementById('battle-ui'),
+  help: document.getElementById('battle-help'),
   enemyList: document.getElementById('enemy-list'),
   partyList: document.getElementById('party-list'),
   cmdWin: document.getElementById('command-win'),
@@ -19,6 +20,7 @@ const bui = {
   result: document.getElementById('battle-result'),
   resultTitle: document.getElementById('result-title'),
   resultText: document.getElementById('result-text'),
+  resultList: document.getElementById('result-list'),
   resultBtn: document.getElementById('result-continue')
 };
 
@@ -33,6 +35,8 @@ const Ease = {
   sineInOut: (t) => -(Math.cos(Math.PI * t) - 1) / 2
 };
 
+const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 // ---------- Start / end ----------
 function startBattle(trigger) {
   const p = state.player;
@@ -41,7 +45,7 @@ function startBattle(trigger) {
     .slice(0, 3);
   state.mode = 'battle';
   state.battles += 1;
-  Object.assign(B, { active: true, anim: null, menu: null, popups: [], fx: [], result: null, guardRefs: group, intro: 0.9, t: 0, exitT: 0 });
+  Object.assign(B, { active: true, anim: null, menu: null, popups: [], fx: [], result: null, guardRefs: group, intro: 0.9, t: 0, exitT: 0, rewards: null });
   B.enemies = group.map((g) => {
     const def = ENEMIES[g.kind] || ENEMIES.guard;
     return { ...def, side: 'enemy', hp: def.maxHp, atb: randBetween(0, 35), alive: true, fade: 0, stolen: false, guard: g, flash: 0 };
@@ -54,6 +58,7 @@ function startBattle(trigger) {
   bui.root.hidden = false;
   bui.result.hidden = true;
   bui.cmdWin.hidden = true;
+  bui.help.hidden = true;
   showMsg(B.enemies.length > 1 ? `${B.enemies.length} guards close in.` : `${B.enemies[0].name} blocks the way.`);
   renderBattleUI();
   [220, 330, 440, 660].forEach((f, i) => setTimeout(() => sfx(f, 0.12, 'square', 0.04), i * 70));
@@ -88,13 +93,16 @@ function endBattle() {
 }
 
 // ---------- Commands ----------
+const battleItems = () => Object.entries(state.items)
+  .filter(([name, n]) => n > 0 && ITEMS[name] && ITEMS[name].category === 'consumable');
+
 function commandsFor(m) {
-  const hasItems = Object.values(state.items).some((n) => n > 0);
+  const special = m.cls === 'rogue' ? 'steal' : m.cls === 'caster' ? 'magic' : 'slash';
   return [
-    { label: 'Hit', type: 'hit' },
-    { label: CLASSES[m.cls].command, type: m.cls === 'rogue' ? 'steal' : m.cls === 'caster' ? 'magic' : 'slash' },
-    { label: 'Item', type: 'item', disabled: !hasItems },
-    { label: 'Run', type: 'run' }
+    { label: 'Hit', type: 'hit', help: COMMAND_HELP.hit },
+    { label: CLASSES[m.cls].command, type: special, help: COMMAND_HELP[special] },
+    { label: 'Item', type: 'item', disabled: battleItems().length === 0, help: battleItems().length ? COMMAND_HELP.item : 'The bag is empty.' },
+    { label: 'Run', type: 'run', help: COMMAND_HELP.run }
   ];
 }
 
@@ -111,10 +119,14 @@ function setStage(stage, options, pending) {
   renderBattleUI();
 }
 
-function chooseTarget(side, pending) {
-  const targets = aliveOn(side);
+function chooseTarget(side, pending, includeFallen = false) {
+  const targets = includeFallen ? B.party.slice() : aliveOn(side);
   Object.assign(B.menu, { stage: 'target', side, targets, index: 0, pending, back: B.menu.stage });
   renderBattleUI();
+}
+
+function itemOptions() {
+  return battleItems().map(([name, n]) => ({ label: name, count: n, type: 'item', help: `${ITEMS[name].effectText}. ${ITEMS[name].desc}` }));
 }
 
 function confirmMenu() {
@@ -129,17 +141,20 @@ function confirmMenu() {
     if (opt.type === 'slash') return execute({ type: 'slash', label: 'Slash', targets: aliveOn('enemy') });
     if (opt.type === 'run') return execute({ type: 'run', label: 'Run', targets: [] });
     if (opt.type === 'magic') {
-      return setStage('magic', CLASSES[m.cls].spells.map((name) => ({ label: name, cost: SPELLS[name].mp, type: 'spell', disabled: m.mp < SPELLS[name].mp })));
+      return setStage('magic', CLASSES[m.cls].spells.map((name) => ({
+        label: name, cost: SPELLS[name].mp, type: 'spell', disabled: m.mp < SPELLS[name].mp,
+        help: `${SPELLS[name].desc} Costs ${SPELLS[name].mp} MP.` + (m.mp < SPELLS[name].mp ? ' Not enough MP.' : '')
+      })));
     }
-    if (opt.type === 'item') {
-      return setStage('item', Object.entries(state.items).filter(([, n]) => n > 0).map(([name, n]) => ({ label: name, count: n, type: 'item' })));
-    }
+    if (opt.type === 'item') return setStage('item', itemOptions());
   } else if (menu.stage === 'magic' || menu.stage === 'item') {
     const opt = menu.options[menu.index];
     if (!opt || opt.disabled) { sfx(140, 0.08, 'square', 0.03); return; }
     sfx(1040, 0.04, 'square', 0.03);
     if (menu.stage === 'magic') return chooseTarget(SPELLS[opt.label].target, { type: 'magic', spell: opt.label, label: opt.label });
-    return chooseTarget(ITEMS[opt.label].target, { type: 'item', item: opt.label, label: opt.label });
+    const item = ITEMS[opt.label];
+    if (item.target === 'none') return execute({ type: 'item', item: opt.label, label: opt.label, targets: [] });
+    return chooseTarget('party', { type: 'item', item: opt.label, label: opt.label }, Boolean(item.effect.revive));
   } else if (menu.stage === 'target') {
     const target = menu.targets[menu.index];
     if (!target) return;
@@ -210,30 +225,53 @@ function heal(target, amount) {
   sfx(700, 0.25, 'sine', 0.05, 500);
 }
 
+function useItemOn(name, target) {
+  const fx = ITEMS[name].effect;
+  if (fx.revive) {
+    if (target.alive) { popup(target, 'No effect', '#c9c3b2'); return false; }
+    target.alive = true;
+    target.hp = Math.max(1, Math.round(target.maxHp * fx.revive));
+    popup(target, 'Revived', '#8ef0a2');
+    sfx(600, 0.35, 'sine', 0.05, 600);
+    return true;
+  }
+  if (!target.alive) { popup(target, 'No effect', '#c9c3b2'); return false; }
+  if (fx.heal) heal(target, fx.heal);
+  if (fx.mp) {
+    target.mp = Math.min(target.maxMp, target.mp + fx.mp);
+    popup(target, `+${fx.mp} MP`, '#9fd3ff');
+    sfx(820, 0.25, 'sine', 0.05, 400);
+  }
+  return true;
+}
+
 function apply(a) {
   const actor = a.actor;
   const targets = a.targets.filter((t) => t.alive || a.type === 'item');
   if (a.type === 'hit') {
     const t = targets[0] || aliveOn(actor.side === 'party' ? 'enemy' : 'party')[0];
     if (!t) return;
-    const d = damage(actor.atk, t.def);
+    const d = damage(stat(actor, 'atk'), stat(t, 'def'));
     hurt(t, d.amount, d.crit);
     sfx(240, 0.08, 'square', 0.06, -120);
   } else if (a.type === 'slash') {
-    for (const t of aliveOn('enemy')) { const d = damage(actor.atk, t.def, 0.85); hurt(t, d.amount, d.crit); }
+    for (const t of aliveOn('enemy')) { const d = damage(stat(actor, 'atk'), stat(t, 'def'), 0.85); hurt(t, d.amount, d.crit); }
     sfx(900, 0.18, 'sawtooth', 0.05, -700);
   } else if (a.type === 'magic') {
     const spell = SPELLS[a.spell];
     const t = targets[0];
     if (!t) return;
     B.fx.push({ kind: a.spell, target: t, t: 0, color: spell.color });
-    if (spell.kind === 'heal') heal(t, Math.round(actor.mag * spell.power * randBetween(0.95, 1.1)));
-    else { hurt(t, Math.max(1, Math.round(actor.mag * spell.power * randBetween(0.9, 1.1) - t.def * 0.5)), false); sfx(a.spell === 'Fire' ? 180 : 1400, 0.3, 'sawtooth', 0.04, a.spell === 'Fire' ? -100 : -900); }
+    if (spell.kind === 'heal') heal(t, Math.round(stat(actor, 'mag') * spell.power * randBetween(0.95, 1.1)));
+    else {
+      hurt(t, Math.max(1, Math.round(stat(actor, 'mag') * spell.power * randBetween(0.9, 1.1) - stat(t, 'def') * 0.5)), false);
+      sfx(a.spell === 'Fire' ? 180 : 1400, 0.3, 'sawtooth', 0.04, a.spell === 'Fire' ? -100 : -900);
+    }
   } else if (a.type === 'steal') {
     const t = targets[0];
     if (!t) return;
-    if (t.stolen) { popup(t, 'Nothing left', '#c9c3b2'); return; }
-    const chance = 0.55 + (actor.spd - t.spd) * 0.03;
+    if (t.stolen) { popup(t, 'Nothing left', '#c9c3b2'); showMsg('Pockets already empty.'); return; }
+    const chance = 0.55 + (stat(actor, 'spd') - t.spd) * 0.03 + stealBonus(actor);
     if (Math.random() < chance) {
       t.stolen = true;
       const loot = t.steal[Math.floor(Math.random() * t.steal.length)];
@@ -254,10 +292,16 @@ function apply(a) {
       showMsg("Couldn't steal anything.");
     }
   } else if (a.type === 'item') {
+    const item = ITEMS[a.item];
+    if (item.effect.escape) {
+      B.result = 'run';
+      B.fx.push({ kind: 'smoke', target: actor, t: 0, color: '#c9cbd8' });
+      showMsg('A pop, a cloud, and ZAY is gone.');
+      sfx(300, 0.4, 'triangle', 0.05, -200);
+      return;
+    }
     const t = targets[0];
-    if (!t) return;
-    if (!t.alive) { popup(t, 'No effect', '#c9c3b2'); return; }
-    heal(t, ITEMS[a.item].heal);
+    if (t) useItemOn(a.item, t);
   } else if (a.type === 'run') {
     if (Math.random() < 0.6) { B.result = 'run'; showMsg('Slipped away into the dark.'); sfx(400, 0.3, 'triangle', 0.05, 400); }
     else showMsg("Couldn't get away!");
@@ -276,6 +320,7 @@ function checkEnd() {
   if (B.result) return;
   if (!aliveOn('enemy').length) {
     B.result = 'win';
+    B.rewards = collectRewards();
     sfx(523, 0.15, 'square', 0.05);
     setTimeout(() => sfx(659, 0.15, 'square', 0.05), 150);
     setTimeout(() => sfx(784, 0.35, 'square', 0.05), 300);
@@ -285,14 +330,56 @@ function checkEnd() {
   if (B.result) showResult();
 }
 
+// EXP, gold and drops, Final Fantasy style.
+function collectRewards() {
+  const exp = B.enemies.reduce((sum, e) => sum + e.exp, 0);
+  const gold = B.enemies.reduce((sum, e) => sum + e.gold, 0);
+  const found = [];
+  for (const e of B.enemies) {
+    for (const d of e.drops || []) {
+      if (Math.random() < d.chance) { found.push(d.item); state.items[d.item] = (state.items[d.item] || 0) + 1; }
+    }
+  }
+  state.player.gold += gold;
+  const living = state.party.filter((m) => m.alive);
+  const share = Math.round(exp / Math.max(1, living.length));
+  const levelUps = [];
+  for (const m of living) {
+    for (const up of gainExp(m, share)) levelUps.push({ name: m.name, ...up });
+  }
+  return { exp: share, gold, found, levelUps };
+}
+
 function showResult() {
   B.menu = null;
   bui.cmdWin.hidden = true;
+  bui.help.hidden = true;
   if (B.result === 'run') { B.exitT = 0.9; return; }
-  bui.resultTitle.textContent = B.result === 'win' ? 'Victory' : 'ZAY is down';
-  bui.resultText.textContent = B.result === 'win'
-    ? `${B.enemies.length === 1 ? 'The guard is' : 'The guards are'} out cold. The code holds: no casualties.`
-    : 'The lantern light closes in.';
+  bui.resultList.innerHTML = '';
+  if (B.result === 'win') {
+    const r = B.rewards;
+    bui.resultTitle.textContent = 'Victory';
+    bui.resultText.textContent = `${B.enemies.length === 1 ? 'The guard is' : 'The guards are'} out cold. The code holds: no casualties.`;
+    const rows = [['EXP', `+${r.exp}`], ['Gold', `+${r.gold}`]];
+    if (r.found.length) rows.push(['Found', r.found.join(', ')]);
+    for (const up of r.levelUps) {
+      const g = up.gains;
+      const parts = [`HP +${g.maxHp}`];
+      for (const k of ['atk', 'def', 'mag', 'spd']) if (g[k]) parts.push(`${STAT_LABELS[k]} +${g[k]}`);
+      if (g.maxMp) parts.push(`MP +${g.maxMp}`);
+      rows.push([`${up.name} Lv ${up.level}!`, parts.join(' · '), true]);
+    }
+    for (const [k, v, levelUp] of rows) {
+      const li = document.createElement('li');
+      if (levelUp) li.className = 'level-up';
+      li.innerHTML = `<span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b>`;
+      bui.resultList.append(li);
+    }
+    if (r.levelUps.length) setTimeout(() => sfx(988, 0.4, 'square', 0.05, 300), 500);
+  } else {
+    bui.resultTitle.textContent = 'ZAY is down';
+    bui.resultText.textContent = 'The lantern light closes in.';
+  }
   bui.result.hidden = false;
   bui.resultBtn.focus({ preventScroll: true });
 }
@@ -343,7 +430,7 @@ function updateBattle(dt) {
   if (B.menu) return; // wait mode: time stops while you choose
 
   const all = [...B.enemies, ...B.party].filter((c) => c.alive);
-  for (const c of all) c.atb = Math.min(100, c.atb + c.spd * dt * 3);
+  for (const c of all) c.atb = Math.min(100, c.atb + stat(c, 'spd') * dt * 3);
   const readyEnemy = B.enemies.find((e) => e.alive && e.atb >= 100);
   if (readyEnemy) { enemyTurn(readyEnemy); return; }
   const readyHero = B.party.find((m) => m.alive && m.atb >= 100);
@@ -352,11 +439,37 @@ function updateBattle(dt) {
 }
 
 // ---------- Battle UI (DOM) ----------
+const bar = (cls, value, max) => `<span class="meter ${cls}"><i style="transform:scaleX(${max ? Math.max(0, value / max) : 0})"></i></span>`;
+
+function renderHelp() {
+  const menu = B.menu;
+  if (!menu) { bui.help.hidden = true; return; }
+  let html = '';
+  if (menu.stage === 'target') {
+    const t = menu.targets[menu.index];
+    if (t) {
+      const isEnemy = t.side === 'enemy';
+      const extra = isEnemy && menu.pending.type === 'steal' ? `<small>${t.stolen ? 'Pockets empty' : 'Pockets full'}</small>` : '';
+      html = `<div class="help-target"><b>${escapeHtml(t.name)}</b>${extra}` +
+        `${bar(isEnemy ? 'enemy-hp' : 'hp', t.hp, t.maxHp)}` +
+        `<span class="help-num">${isEnemy ? '' : `${t.hp}/${t.maxHp}`}</span></div>`;
+    }
+  } else {
+    const opt = menu.options[menu.index];
+    if (opt && opt.help) {
+      const icon = menu.stage === 'item' && typeof itemIcon === 'function' ? itemIcon(opt.label) : '';
+      html = `<div class="help-line">${icon}<span>${escapeHtml(opt.help)}</span></div>`;
+    }
+  }
+  bui.help.innerHTML = html;
+  bui.help.hidden = !html;
+}
+
 function renderBattleUI() {
   const menu = B.menu;
   const targeting = menu && menu.stage === 'target' ? menu : null;
   bui.enemyList.innerHTML = '';
-  B.enemies.forEach((e, i) => {
+  B.enemies.forEach((e) => {
     if (!e.alive) return;
     const li = document.createElement('li');
     const btn = document.createElement('button');
@@ -377,17 +490,18 @@ function renderBattleUI() {
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'party-row' + (!m.alive ? ' is-down' : '') + (menu && menu.actor === m ? ' is-active' : '');
+    btn.className = 'party-row' + (!m.alive ? ' is-down' : '') + (menu && menu.actor === m ? ' is-active' : '') + (m.hp > 0 && m.hp <= m.maxHp * 0.25 ? ' is-low' : '');
     const targetIndex = targeting && targeting.side === 'party' ? targeting.targets.indexOf(m) : -1;
     if (targetIndex !== -1) {
       btn.classList.add('selectable');
       if (targetIndex === targeting.index) btn.classList.add('is-cursor');
       btn.addEventListener('click', () => { B.menu.index = targetIndex; confirmMenu(); });
     } else btn.disabled = true;
-    btn.innerHTML = `<span class="pr-name"></span><span class="pr-hp"><b>${m.hp}</b>/${m.maxHp}</span>` +
-      (m.maxMp ? `<span class="pr-mp">MP ${m.mp}</span>` : '<span class="pr-mp"></span>') +
+    btn.innerHTML =
+      `<span class="pr-name">${escapeHtml(m.name)} <small>Lv ${m.level}</small></span>` +
+      `<span class="pr-hp"><b>${m.hp}</b>/${m.maxHp}</span>` +
+      `<span class="pr-bars">${bar('hp', m.hp, m.maxHp)}${m.maxMp ? bar('mp', m.mp, m.maxMp) : ''}</span>` +
       `<span class="atb"><i data-atb="${m.id}" style="transform:scaleX(${m.atb / 100})"></i></span>`;
-    btn.querySelector('.pr-name').textContent = m.name;
     li.append(btn);
     bui.partyList.append(li);
   });
@@ -402,10 +516,16 @@ function renderBattleUI() {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = (i === menu.index ? 'is-cursor' : '') + (opt.disabled ? ' is-disabled' : '');
-      btn.textContent = opt.label;
+      const label = document.createElement('span');
+      label.textContent = opt.label;
+      btn.append(label);
       if (opt.cost !== undefined) { const s = document.createElement('small'); s.textContent = opt.cost + ' MP'; btn.append(s); }
       if (opt.count !== undefined) { const s = document.createElement('small'); s.textContent = '×' + opt.count; btn.append(s); }
-      btn.addEventListener('click', () => { B.menu.index = i; confirmMenu(); });
+      btn.addEventListener('click', () => {
+        if (B.menu.index !== i) { B.menu.index = i; renderBattleUI(); if (!isTouch) return; }
+        confirmMenu();
+      });
+      btn.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse' && B.menu && B.menu.index !== i) { B.menu.index = i; renderBattleUI(); } });
       li.append(btn);
       bui.cmdList.append(li);
     });
@@ -427,14 +547,15 @@ function renderBattleUI() {
   } else {
     bui.cmdWin.hidden = true;
   }
+  renderHelp();
 }
 
 function updateGauges() {
   for (const m of B.party) {
-    const bar = bui.partyList.querySelector(`[data-atb="${m.id}"]`);
-    if (bar) {
-      bar.style.transform = `scaleX(${m.atb / 100})`;
-      bar.parentElement.classList.toggle('is-full', m.atb >= 100);
+    const el = bui.partyList.querySelector(`[data-atb="${m.id}"]`);
+    if (el) {
+      el.style.transform = `scaleX(${m.atb / 100})`;
+      el.parentElement.classList.toggle('is-full', m.atb >= 100);
     }
   }
 }

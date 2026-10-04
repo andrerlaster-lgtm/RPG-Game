@@ -200,7 +200,9 @@ function newState() {
     over: false,
     mode: 'field',
     party: makeParty(),
-    items: { Potion: 2 },
+    items: { ...STARTING_BAG },
+    chests: [[5,22,'Lucky Coin'],[24,17,'Hi-Potion'],[36,17,'Smelling Salts'],[57,23,'Smoke Bomb'],[45,16,'Veyrane Brigandine']]
+      .map(([x, y, item]) => ({ ...centre(x, y), item, opened: false })),
     battles: 0,
     stolen: [],
     time: 0,
@@ -237,17 +239,18 @@ const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in win
 
 window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
-  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(k)) e.preventDefault();
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
-  if ((k === 'p' || (k === 'escape' && state.mode !== 'battle')) && state.running && !state.over) togglePause();
+  if ((k === 'p' || (k === 'escape' && state.mode === 'field')) && state.mode !== 'inventory' && state.running && !state.over) togglePause();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
 // Input map (like Godot's InputMap): gamepad buttons feed the same actions as keys.
 // Standard layout: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 9 Start, 12-15 d-pad.
 const PAD_MAP = {
-  field: { 0: 'e', 1: ' ', 2: 'q', 4: 'shift', 5: 'shift', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
+  field: { 0: 'e', 1: ' ', 2: 'q', 3: 'i', 4: 'shift', 5: 'shift', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
+  inventory: { 0: 'enter', 1: 'escape', 3: 'i', 4: 'q', 5: 'e', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   battle: { 0: 'enter', 1: 'escape', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' }
 };
 const padHeld = new Set();
@@ -256,7 +259,7 @@ function pollGamepad() {
   const pad = Array.from(pads || []).find((g) => g && g.connected);
   const now = new Set();
   if (pad) {
-    const map = PAD_MAP[state.mode === 'battle' ? 'battle' : 'field'];
+    const map = PAD_MAP[state.mode] || PAD_MAP.field;
     pad.buttons.forEach((b, i) => { if (b.pressed && map[i]) now.add(map[i]); });
     const [ax = 0, ay = 0] = pad.axes;
     const dead = 0.45;
@@ -269,7 +272,7 @@ function pollGamepad() {
   for (const k of padHeld) if (!now.has(k)) keys.delete(k);
   padHeld.clear();
   now.forEach((k) => padHeld.add(k));
-  if (pressed.has('p') && now.has('p') && state.running && !state.over) togglePause();
+  if (pressed.has('p') && now.has('p') && state.mode !== 'inventory' && state.running && !state.over) togglePause();
 }
 window.addEventListener('gamepadconnected', () => toast('Controller connected', 1500));
 window.addEventListener('blur', () => { keys.clear(); if (state.running && !state.over && !state.paused) togglePause(); });
@@ -434,6 +437,7 @@ function updatePlayer(dt) {
     state.guards.some((g) => g.state !== 'down' && Math.hypot(g.x - p.x, g.y - p.y) < 58));
 
   // Actions
+  if (pressed.has('i') || pressed.has('tab')) { openInventory(); return; }
   if (pressed.has('e') || pressed.has('touch-use')) use();
   if (pressed.has('q') || pressed.has('mouse-card') || pressed.has('touch-card')) throwCard(pressed.has('mouse-card') || (pressed.has('q') && mouse.has));
 
@@ -486,7 +490,19 @@ function use() {
     toast("Veyrane's ledger. Noe's contract is in here. Now get to the river.", 3200);
     return;
   }
-  // 4. The Soot kid at the docks
+  // 4. Chests
+  for (const c of state.chests) {
+    if (!c.opened && dist(c, p) < 40) {
+      c.opened = true;
+      state.items[c.item] = (state.items[c.item] || 0) + 1;
+      effect('sparkle', c.x, c.y);
+      sfx(660, 0.12, 'triangle', 0.05, 330);
+      setTimeout(() => sfx(990, 0.18, 'triangle', 0.05, 200), 120);
+      toast(`Found ${c.item}. Press I to open your bag.`, 2600);
+      return;
+    }
+  }
+  // 5. The Soot kid at the docks
   if (dist(KID, p) < 44) {
     if (p.gold > 0) {
       p.given += p.gold;
@@ -499,7 +515,7 @@ function use() {
     }
     return;
   }
-  // 5. Wedge yourself into cover tip
+  // 6. Nothing nearby
   if (tileAt(p.x, p.y) !== 'h') toast('Nothing to use here.', 1100);
 }
 
@@ -827,6 +843,7 @@ function drawProps() {
     ctx.fillRect(c.x - 1.5, c.y - 3 + b, 2, 2);
   }
   for (const c of state.cardPickups) if (!c.taken && inView(c.x, c.y)) drawCard(c.x, c.y + Math.sin(t * 3) * 2, 0.3);
+  for (const c of state.chests) if (inView(c.x, c.y)) drawChest(c, t);
   if (!state.ledgerTaken) {
     const l = LEDGER_SPOT;
     ctx.fillStyle = '#4a2e1c';
@@ -848,6 +865,25 @@ function drawProps() {
   ctx.fillStyle = '#6b4a35';
   ctx.beginPath(); ctx.arc(k.x, k.y - 2, 4.5, 0, Math.PI * 2); ctx.fill();
   if (KID.helped) { ctx.fillStyle = '#e9b65a'; ctx.beginPath(); ctx.arc(k.x + 9, k.y + 5, 3, 0, Math.PI * 2); ctx.fill(); }
+}
+function drawChest(c, t) {
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.fillRect(-11, 5, 22, 4);
+  ctx.fillStyle = c.opened ? '#3a2a1c' : '#6b4524';
+  ctx.fillRect(-11, -6, 22, 12);
+  ctx.fillStyle = c.opened ? '#24180f' : '#835a2e';
+  ctx.fillRect(-11, -10, 22, c.opened ? 3 : 6);
+  ctx.fillStyle = '#e9b65a';
+  ctx.fillRect(-11, -5, 22, 1.5);
+  if (!c.opened) {
+    ctx.fillRect(-2, -5, 4, 5);
+    ctx.globalAlpha = 0.5 + Math.sin(t * 3 + c.x) * 0.3;
+    ctx.fillStyle = '#fff2c4';
+    ctx.fillRect(7, -12, 2, 2);
+  }
+  ctx.restore();
 }
 function drawCard(x, y, spin) {
   ctx.save();
@@ -1052,6 +1088,7 @@ function finish(won) {
     ['Time', `${mins}:${secs}`],
     ['Times spotted', state.alarms],
     ['Battles', state.battles],
+    ['ZAY reached', `Level ${state.party[0].level}`],
     ['Stolen in battle', state.stolen.length ? state.stolen.join(', ') : 'nothing'],
     ['Guards knocked out', state.kos],
     ['Casualties', '0 · the code held'],
@@ -1074,6 +1111,8 @@ function start() {
   document.getElementById('end').hidden = true;
   document.getElementById('pause').hidden = true;
   document.getElementById('battle-ui').hidden = true;
+  document.getElementById('inventory').hidden = true;
+  INV.open = false;
   B.active = false;
   hudEls.hud.hidden = false;
   document.getElementById('touch').hidden = !isTouch;
@@ -1100,6 +1139,7 @@ function frame(now) {
   if (state.running && !state.paused) {
     state.time += dt;
     if (state.mode === 'battle') updateBattle(dt);
+    else if (state.mode === 'inventory') updateInventory();
     else {
       updatePlayer(dt);
       updateProjectiles(dt);

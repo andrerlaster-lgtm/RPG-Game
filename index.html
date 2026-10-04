@@ -12,6 +12,7 @@
   <script src="characters.js" defer></script>
   <script src="game.js" defer></script>
   <script src="battle.js" defer></script>
+  <script src="inventory.js" defer></script>
 </head>
 <body>
   <canvas id="game" aria-label="Game view"></canvas>
@@ -22,6 +23,7 @@
       <div class="stat"><span class="stat-icon coin" aria-hidden="true"></span><span id="gold">0</span></div>
       <div class="stat"><span class="stat-icon card" aria-hidden="true"></span><span id="cards">5</span></div>
       <div id="vis" class="vis">Shadow</div>
+      <button type="button" id="bag-btn" class="pause-btn bag-btn" aria-label="Open bag">Bag</button>
       <button type="button" id="pause-btn" class="pause-btn" aria-label="Pause">II</button>
     </div>
     <p id="objective" class="objective"></p>
@@ -56,14 +58,14 @@
             <li><kbd>Arrow keys</kbd> move · <kbd>Shift</kbd> sprint (noisy)</li>
             <li><kbd>E</kbd> takedown from behind, vault, grab, give</li>
             <li><kbd>Q</kbd> / right-click throw a card to distract</li>
-            <li><kbd>Space</kbd> roll</li>
+            <li><kbd>Space</kbd> roll · <kbd>I</kbd> bag</li>
             <li>Battle: <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> confirm · <kbd>Esc</kbd> back</li>
           </ul>
         </div>
         <div><h2>Touch</h2>
           <ul>
             <li>Arrow pad: move</li>
-            <li>Use · Card · Sprint · Roll buttons</li>
+            <li>Use · Card · Sprint · Roll buttons · Bag (top)</li>
             <li>Battle: tap a command, then a target</li>
           </ul>
         </div>
@@ -73,6 +75,7 @@
   </section>
 
   <section id="battle-ui" class="battle-ui" hidden>
+    <div id="battle-help" class="ff-window battle-help" hidden></div>
     <div id="battle-msg" class="ff-window battle-msg" hidden></div>
     <div class="ff-window enemy-win"><ul id="enemy-list" class="ff-list"></ul></div>
     <div class="ff-window party-win"><ul id="party-list" class="ff-list"></ul></div>
@@ -83,7 +86,24 @@
     <div id="battle-result" class="ff-window battle-result" hidden>
       <h2 id="result-title"></h2>
       <p id="result-text"></p>
+      <ul id="result-list" class="result-list"></ul>
       <button type="button" id="result-continue" class="primary">Continue</button>
+    </div>
+  </section>
+
+  <section id="inventory" class="inventory" hidden aria-label="Bag">
+    <div class="inv-panel">
+      <header class="inv-head">
+        <div id="inv-tabs" class="inv-tabs" role="tablist"></div>
+        <div class="inv-gold"><span class="stat-icon coin" aria-hidden="true"></span><span id="inv-gold">0</span></div>
+        <button type="button" id="inv-close" class="inv-close" aria-label="Close bag"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </header>
+      <div class="inv-body">
+        <section id="inv-char" class="inv-char" aria-label="Character"></section>
+        <ul id="inv-grid" class="inv-grid" aria-label="Items"></ul>
+        <section id="inv-info" class="inv-info" aria-live="polite"></section>
+      </div>
+      <p class="inv-keys">← → ↑ ↓ choose · Enter actions · Q / E switch tabs · Esc close</p>
     </div>
   </section>
 
@@ -91,6 +111,7 @@
     <div class="panel small">
       <h1>Paused</h1>
       <button type="button" id="resume" class="primary">Resume</button>
+      <button type="button" id="pause-inventory" class="secondary">Bag</button>
       <button type="button" id="restart-pause" class="secondary">Restart level</button>
     </div>
   </section>
