@@ -9,22 +9,29 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Barlow:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="style.css">
+  <script src="icons.js" defer></script>
   <script src="characters.js" defer></script>
+  <script src="ui.js" defer></script>
   <script src="game.js" defer></script>
   <script src="battle.js" defer></script>
   <script src="inventory.js" defer></script>
+  <script src="audio.js" defer></script>
+  <script src="dialog.js" defer></script>
+  <script src="shop.js" defer></script>
 </head>
 <body>
   <canvas id="game" aria-label="Game view"></canvas>
 
   <div id="hud" hidden>
     <div class="hud-row">
-      <div class="hp-meter" aria-label="Health"><span class="hp-label">ZAY</span><span class="hp-bar"><i id="hp-fill"></i></span><span id="hp-text" class="hp-text">140/140</span></div>
-      <div class="stat"><span class="stat-icon coin" aria-hidden="true"></span><span id="gold">0</span></div>
-      <div class="stat"><span class="stat-icon card" aria-hidden="true"></span><span id="cards">5</span></div>
-      <div id="vis" class="vis">Shadow</div>
-      <button type="button" id="bag-btn" class="pause-btn bag-btn" aria-label="Open bag">Bag</button>
-      <button type="button" id="pause-btn" class="pause-btn" aria-label="Pause">II</button>
+      <div class="hp-meter hud-tip" aria-label="Health" data-tip="hp"><span class="hp-label">ZAY</span><span class="hp-bar"><i id="hp-fill"></i></span><span id="hp-text" class="hp-text">140/140</span></div>
+      <div class="stat stat-coin hud-tip" data-tip="gold"><span data-icon="coin"></span><span id="gold">0</span></div>
+      <div class="stat stat-cards hud-tip" data-tip="cards"><span data-icon="cards"></span><span id="cards">5</span></div>
+      <div id="vis" class="vis hud-tip" data-tip="vis">Shadow</div>
+      <div class="hud-buttons">
+        <button type="button" id="bag-btn" class="icon-btn" aria-label="Open bag" data-tip="bag"><span data-icon="bag"></span><span class="btn-label">Bag</span><span id="bag-badge" class="badge" hidden>0</span></button>
+        <button type="button" id="pause-btn" class="icon-btn" aria-label="Pause" data-tip="pause"><span data-icon="pause"></span></button>
+      </div>
     </div>
     <p id="objective" class="objective"></p>
   </div>
@@ -70,7 +77,10 @@
           </ul>
         </div>
       </div>
-      <button type="button" id="start" class="primary">Begin the job</button>
+      <div class="button-row">
+        <button type="button" id="start" class="btn btn--primary">Begin the job</button>
+        <button type="button" id="title-options" class="btn btn--secondary"><span data-icon="settings"></span>Options</button>
+      </div>
     </div>
   </section>
 
@@ -87,7 +97,7 @@
       <h2 id="result-title"></h2>
       <p id="result-text"></p>
       <ul id="result-list" class="result-list"></ul>
-      <button type="button" id="result-continue" class="primary">Continue</button>
+      <button type="button" id="result-continue" class="btn btn--primary">Continue</button>
     </div>
   </section>
 
@@ -95,8 +105,8 @@
     <div class="inv-panel">
       <header class="inv-head">
         <div id="inv-tabs" class="inv-tabs" role="tablist"></div>
-        <div class="inv-gold"><span class="stat-icon coin" aria-hidden="true"></span><span id="inv-gold">0</span></div>
-        <button type="button" id="inv-close" class="inv-close" aria-label="Close bag"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <div class="inv-gold"><span class="stat-icon" data-icon="coin"></span><span id="inv-gold">0</span></div>
+        <button type="button" id="inv-close" class="inv-close" aria-label="Close bag"><span data-icon="close"></span></button>
       </header>
       <div class="inv-body">
         <section id="inv-char" class="inv-char" aria-label="Character"></section>
@@ -110,9 +120,81 @@
   <section id="pause" class="screen" hidden>
     <div class="panel small">
       <h1>Paused</h1>
-      <button type="button" id="resume" class="primary">Resume</button>
-      <button type="button" id="pause-inventory" class="secondary">Bag</button>
-      <button type="button" id="restart-pause" class="secondary">Restart level</button>
+      <button type="button" id="resume" class="btn btn--primary">Resume</button>
+      <button type="button" id="pause-inventory" class="btn btn--secondary"><span data-icon="bag"></span>Bag</button>
+      <button type="button" id="pause-options" class="btn btn--secondary"><span data-icon="settings"></span>Options</button>
+      <button type="button" id="restart-pause" class="btn btn--danger">Restart level</button>
+    </div>
+  </section>
+
+  <section id="options" class="modal" role="dialog" aria-modal="true" aria-labelledby="options-title" hidden>
+    <div class="modal-card">
+      <h2 id="options-title">Options</h2>
+      <div class="setting">
+        <span class="setting-label"><b>Sound effects</b><small>Footsteps, blades, coins</small></span>
+        <span class="slider-wrap"><span data-icon="sound"></span><input id="opt-volume" class="slider" type="range" min="0" max="100" step="5" aria-label="Volume"><span id="opt-volume-value" class="slider-value">70</span></span>
+      </div>
+      <div class="setting">
+        <span class="setting-label"><b>Music</b><small>Night streets and battle theme</small></span>
+        <span class="slider-wrap"><span data-icon="sound"></span><input id="opt-music" class="slider" type="range" min="0" max="100" step="5" aria-label="Music volume"><span id="opt-music-value" class="slider-value">60</span></span>
+      </div>
+      <div class="setting">
+        <span class="setting-label"><b>Guard vision cones</b><small>Show where guards are looking</small></span>
+        <button type="button" id="opt-cones" class="toggle" role="switch" aria-checked="true" aria-label="Guard vision cones"></button>
+      </div>
+      <div class="setting">
+        <span class="setting-label"><b>Screen shake</b><small>Turn off if motion bothers you</small></span>
+        <button type="button" id="opt-shake" class="toggle" role="switch" aria-checked="true" aria-label="Screen shake"></button>
+      </div>
+      <div class="setting">
+        <span class="setting-label"><b>Battle speed</b><small>How fast time gauges fill</small></span>
+        <span id="opt-speed" class="segmented" role="radiogroup" aria-label="Battle speed">
+          <button type="button" role="radio" data-speed="0.7">Slow</button>
+          <button type="button" role="radio" data-speed="1">Normal</button>
+          <button type="button" role="radio" data-speed="1.4">Fast</button>
+        </span>
+      </div>
+      <div class="modal-actions" style="grid-template-columns: 1fr">
+        <button type="button" id="options-done" class="btn btn--primary">Done</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="confirm" class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text" hidden>
+    <div class="modal-card">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text"></p>
+      <div class="modal-actions">
+        <button type="button" id="confirm-cancel" class="btn btn--secondary">Cancel</button>
+        <button type="button" id="confirm-ok" class="btn btn--danger"></button>
+      </div>
+    </div>
+  </section>
+
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+
+  <section id="dialog" class="dialog ff-window" role="dialog" aria-live="polite" aria-label="Dialog" hidden>
+    <div id="dialog-portrait" class="dialog-portrait" aria-hidden="true"></div>
+    <div class="dialog-body">
+      <p id="dialog-name" class="dialog-name"></p>
+      <p id="dialog-text" class="dialog-text"></p>
+      <ul id="dialog-choices" class="ff-list dialog-choices" hidden></ul>
+    </div>
+    <span id="dialog-next" class="dialog-next" aria-hidden="true" hidden></span>
+  </section>
+
+  <section id="shop" class="inventory" aria-label="Blackwater fence" hidden>
+    <div class="inv-panel shop-panel">
+      <header class="inv-head">
+        <div id="shop-tabs" class="inv-tabs"></div>
+        <div class="inv-gold"><span class="stat-icon" data-icon="coin"></span><span id="shop-gold">0</span></div>
+        <button type="button" id="shop-close" class="inv-close" aria-label="Leave the shop"><span data-icon="close"></span></button>
+      </header>
+      <div class="shop-body">
+        <ul id="shop-list" class="shop-list"></ul>
+        <section id="shop-info" class="inv-info shop-info" aria-live="polite"></section>
+      </div>
+      <p class="inv-keys">↑ ↓ choose · Enter buy/sell · ← → switch Buy/Sell · Esc leave</p>
     </div>
   </section>
 
@@ -122,7 +204,7 @@
       <h1 id="end-title"></h1>
       <p id="end-text" class="lede"></p>
       <dl id="end-stats" class="end-stats"></dl>
-      <button type="button" id="again" class="primary">Run it again</button>
+      <button type="button" id="again" class="btn btn--primary">Run it again</button>
     </div>
   </section>
 </body>

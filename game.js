@@ -4,39 +4,26 @@
 // ZAY slips into House Veyrane's estate, steals the debt ledger, and escapes to the river.
 
 const TILE = 32;
-const W = 64;
-const H = 44;
-
-// ---------- Map ----------
-// '#' building/wall, '.' street, 'g' garden, 'h' hedge (hide), 'f' floor, 'w' river
-const grid = Array.from({ length: H }, () => Array(W).fill('#'));
-function fill(x, y, w, h, c) {
-  for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) {
-    if (i >= 0 && j >= 0 && i < W && j < H) grid[j][i] = c;
-  }
-}
-fill(2, 34, 10, 8, '.');   // Soot Quarter alley (start)
-fill(2, 28, 58, 4, '.');   // Lantern Quarter avenue
-fill(12, 6, 3, 36, '.');   // Street A
-fill(30, 4, 3, 28, '.');   // Street B
-fill(12, 6, 40, 3, '.');   // Crown Quarter upper avenue
-fill(18, 16, 8, 6, '.');   // Market plaza
-fill(15, 18, 3, 2, '.');
-fill(26, 18, 4, 2, '.');
-fill(4, 22, 3, 6, '.');    // Soot dead-end
-fill(39, 11, 19, 13, 'g'); // Veyrane garden
-fill(44, 13, 10, 5, '#');  // Counting house
-fill(45, 14, 8, 3, 'f');   // Counting house interior
-grid[17][48] = 'f';        // House door
-fill(47, 24, 2, 1, 'g');   // Estate gate
-fill(46, 25, 4, 3, '.');   // Gate approach
-fill(33, 16, 5, 2, '.');   // Side alley to the wall
-fill(41, 19, 2, 2, 'h');   // Hedges
-fill(54, 14, 2, 3, 'h');
-fill(42, 13, 1, 3, 'h');
-fill(50, 20, 3, 1, 'h');
-fill(60, 0, 4, 44, 'w');   // River
-fill(56, 32, 4, 3, '.');   // Dock
+// ---------- Level (Tiled map) ----------
+// The level lives in levels/paper-thief.tmj and can be edited in Tiled (mapeditor.org).
+//   Tile layer "ground": tiles 1-7 = building, street, garden, hedge, floor, river, dock.
+//   Object layer "objects" (object Class/Type):
+//     start, lamp (radius), chest (item), coin (gold), cards (count), ledger, kid, boat,
+//     vault (a 2-point line across a wall), guard (polyline patrol route; kind = guard/captain),
+//     fence (the Blackwater shop), overhear (radius, lines = "text | text | text": guards talk nearby).
+const LEVEL_URL = 'levels/paper-thief.tmj';
+const KIND_BY_TILE = ['#', '.', 'g', 'h', 'f', 'w', 'd'];
+let W = 64;
+let H = 44;
+let grid = Array.from({ length: H }, () => Array(W).fill('#'));
+let LEVEL = null;
+let LAMPS = [];
+let VAULTS = [];
+let GUARD_ROUTES = [];
+const BOAT = { x: 0, y: 0 };
+const KID = { x: 0, y: 0, helped: false };
+const LEDGER_SPOT = { x: 0, y: 0 };
+const FENCE = { x: 0, y: 0 };
 
 const tileAt = (px, py) => {
   const tx = Math.floor(px / TILE);
@@ -47,9 +34,6 @@ const tileAt = (px, py) => {
 const solidTile = (t) => t === '#' || t === 'w';
 const isSolidAt = (tx, ty) => tx < 0 || ty < 0 || tx >= W || ty >= H || solidTile(grid[ty][tx]);
 const centre = (tx, ty) => ({ x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 });
-
-const LAMPS = [[6,35],[13,24],[8,28],[20,31],[27,28],[36,31],[44,28],[52,31],[13,12],[22,6],[31,14],[40,8],[48,25],[21,18],[58,33],[41,23],[55,11],[46,14]]
-  .map(([x, y]) => ({ ...centre(x, y), r: grid[y][x] === 'f' ? 92 : 128 }));
 
 // Visibility polygon for a light (like Godot's LightOccluder2D): cast rays until they hit a building.
 // Rays go a few pixels into the wall so the façade facing the light still glows.
@@ -67,23 +51,46 @@ function lightPolygon(x, y, r, rays = 160) {
   }
   return pts;
 }
-LAMPS.forEach((l) => { l.poly = lightPolygon(l.x, l.y, l.r); });
 
-const VAULTS = [{ wall: centre(38, 16), a: centre(37, 16), b: centre(39, 16) }];
-const BOAT = { x: 60 * TILE + 16, y: 33 * TILE + 16 };
-const KID = { ...centre(57, 34), helped: false };
-const LEDGER_SPOT = centre(52, 15);
-
-const GUARD_ROUTES = [
-  [[16,29],[28,29],[28,30],[16,30]],
-  [[31,9],[31,26]],
-  [[18,7],[46,7]],
-  [[46,23],[49,23]],
-  [[40,12],[56,12],[56,22],[40,22]],
-  [[38,30],[55,30]],
-  [[46,15],[51,15]],
-  [[19,17],[24,20],[19,20]]
-];
+function buildLevel(map) {
+  W = map.width;
+  H = map.height;
+  const ground = map.layers.find((l) => l.type === 'tilelayer');
+  const first = (map.tilesets && map.tilesets[0] && map.tilesets[0].firstgid) || 1;
+  grid = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => KIND_BY_TILE[ground.data[y * W + x] - first] || '#'));
+  const objects = (map.layers.find((l) => l.type === 'objectgroup') || { objects: [] }).objects;
+  const kindOf = (o) => o.type || o.class || '';
+  const of = (kind) => objects.filter((o) => kindOf(o) === kind);
+  const prop = (o, name, fallback) => {
+    const p = (o.properties || []).find((q) => q.name === name);
+    return p ? p.value : fallback;
+  };
+  const at = (o) => ({ x: o.x, y: o.y });
+  const line = (o) => (o.polyline || o.polygon || [{ x: 0, y: 0 }]).map((q) => ({ x: o.x + q.x, y: o.y + q.y }));
+  const start = of('start')[0];
+  LEVEL = {
+    title: prop(map, 'title', 'Paper Thief'),
+    start: start ? at(start) : centre(4, 38),
+    coins: of('coin').map((o) => ({ ...at(o), gold: prop(o, 'gold', 12) })),
+    cards: of('cards').map((o) => ({ ...at(o), count: prop(o, 'count', 3) })),
+    chests: of('chest').map((o) => ({ ...at(o), item: prop(o, 'item', o.name) })),
+    overhears: of('overhear').map((o) => ({ ...at(o), radius: prop(o, 'radius', 110), lines: String(prop(o, 'lines', '')).split('|').map((x) => x.trim()).filter(Boolean) }))
+  };
+  LAMPS = of('lamp').map((o) => ({ ...at(o), r: prop(o, 'radius', tileAt(o.x, o.y) === 'f' ? 92 : 128) }));
+  LAMPS.forEach((l) => { l.poly = lightPolygon(l.x, l.y, l.r); });
+  VAULTS = of('vault').map((o) => {
+    const pts = line(o);
+    const a = pts[0], b = pts[pts.length - 1];
+    return { a, b, wall: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+  });
+  FENCE.x = 0; FENCE.y = 0;
+  for (const [target, kind] of [[BOAT, 'boat'], [KID, 'kid'], [LEDGER_SPOT, 'ledger'], [FENCE, 'fence']]) {
+    const o = of(kind)[0];
+    if (o) Object.assign(target, at(o));
+  }
+  GUARD_ROUTES = of('guard').map((o) => ({ kind: prop(o, 'kind', 'guard'), pts: line(o) }));
+  renderMap();
+}
 
 // ---------- Canvas ----------
 const canvas = document.getElementById('game');
@@ -112,10 +119,12 @@ const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 214
 
 // ---------- Pre-rendered map ----------
 const mapCanvas = document.createElement('canvas');
-mapCanvas.width = W * TILE;
-mapCanvas.height = H * TILE;
 const WINDOWS = [];
-(function renderMap() {
+function renderMap() {
+  seed = 7;
+  WINDOWS.length = 0;
+  mapCanvas.width = W * TILE;
+  mapCanvas.height = H * TILE;
   const m = mapCanvas.getContext('2d');
   for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
     const t = grid[ty][tx];
@@ -141,6 +150,11 @@ const WINDOWS = [];
           m.fillRect(x + rand() * 30, y + rand() * 30, 2, 3);
         }
       }
+    } else if (t === 'd') {
+      m.fillStyle = '#0b1729';
+      m.fillRect(x, y, TILE, TILE);
+      m.fillStyle = '#4a3523';
+      for (let k = 0; k < 4; k++) m.fillRect(x, y + k * 8, TILE, 6);
     } else if (t === 'f') {
       m.fillStyle = '#3a2a20';
       m.fillRect(x, y, TILE, TILE);
@@ -186,10 +200,7 @@ const WINDOWS = [];
     m.fillStyle = '#2f5c3a';
     m.beginPath(); m.arc(c.x - 4, c.y - 5, 9, 0, Math.PI * 2); m.fill();
   }
-  // Dock planks
-  m.fillStyle = '#4a3523';
-  for (let ty = 32; ty <= 34; ty++) for (let k = 0; k < 4; k++) m.fillRect(56 * TILE, ty * TILE + k * 8, 4 * TILE, 6);
-})();
+}
 
 // ---------- State ----------
 let state;
@@ -201,27 +212,28 @@ function newState() {
     mode: 'field',
     party: makeParty(),
     items: { ...STARTING_BAG },
-    chests: [[5,22,'Lucky Coin'],[24,17,'Hi-Potion'],[36,17,'Smelling Salts'],[57,23,'Smoke Bomb'],[45,16,'Veyrane Brigandine']]
-      .map(([x, y, item]) => ({ ...centre(x, y), item, opened: false })),
+    chests: LEVEL.chests.map((c) => ({ ...c, opened: false })),
     battles: 0,
     stolen: [],
+    newItems: new Set(),
     time: 0,
     player: {
-      x: 4 * TILE + 16, y: 38 * TILE + 16, r: 10, dir: -Math.PI / 2,
+      x: LEVEL.start.x, y: LEVEL.start.y, r: 10, dir: -Math.PI / 2,
       gold: 0, given: 0, cards: 5, invuln: 0, dashT: 0, dashCd: 0, slashCd: 0, slashT: 0,
       noiseT: 0, lit: false, hidden: false, moving: false, sprint: false, hasLedger: false, step: 0
     },
-    guards: GUARD_ROUTES.map((route, i) => {
-      const pts = route.map(([x, y]) => centre(x, y));
+    guards: GUARD_ROUTES.map((route) => {
+      const pts = route.pts;
       return {
-        kind: i === 4 || i === 6 ? 'captain' : 'guard',
+        kind: route.kind,
         x: pts[0].x, y: pts[0].y, r: 11, dir: 0, route: pts, ri: 1 % pts.length,
         state: 'patrol', meter: 0, hp: 3, path: [], pathT: 0, pathGoal: null, target: null,
         lostT: 0, lookT: 0, attackCd: 0, windup: 0, stunT: 0, seenBodies: new Set(), speed: 52
       };
     }),
-    coins: [[13,9],[31,5],[24,20],[5,23],[40,21],[56,21],[51,15],[35,17],[58,29],[10,40],[44,7]].map(([x, y]) => ({ ...centre(x, y), taken: false })),
-    cardPickups: [[20,20],[31,24],[9,36]].map(([x, y]) => ({ ...centre(x, y), taken: false })),
+    coins: LEVEL.coins.map((c) => ({ ...c, taken: false })),
+    cardPickups: LEVEL.cards.map((c) => ({ ...c, taken: false })),
+    overhears: LEVEL.overhears.map((o) => ({ ...o, done: false })),
     projectiles: [],
     effects: [],
     alarms: 0,
@@ -229,7 +241,8 @@ function newState() {
     ledgerTaken: false
   };
 }
-state = newState();
+// Placeholder until the level file loads.
+state = { running: false, paused: false, over: false, mode: 'title', party: [], items: {}, newItems: new Set(), player: { gold: 0 } };
 
 // ---------- Input ----------
 const keys = new Set();
@@ -242,7 +255,7 @@ window.addEventListener('keydown', (e) => {
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(k)) e.preventDefault();
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
-  if ((k === 'p' || (k === 'escape' && state.mode === 'field')) && state.mode !== 'inventory' && state.running && !state.over) togglePause();
+  if ((k === 'p' || (k === 'escape' && state.mode === 'field')) && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
@@ -251,6 +264,8 @@ window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 const PAD_MAP = {
   field: { 0: 'e', 1: ' ', 2: 'q', 3: 'i', 4: 'shift', 5: 'shift', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   inventory: { 0: 'enter', 1: 'escape', 3: 'i', 4: 'q', 5: 'e', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
+  dialog: { 0: 'enter', 1: 'enter', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
+  shop: { 0: 'enter', 1: 'escape', 4: 'q', 5: 'q', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   battle: { 0: 'enter', 1: 'escape', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' }
 };
 const padHeld = new Set();
@@ -272,7 +287,7 @@ function pollGamepad() {
   for (const k of padHeld) if (!now.has(k)) keys.delete(k);
   padHeld.clear();
   now.forEach((k) => padHeld.add(k));
-  if (pressed.has('p') && now.has('p') && state.mode !== 'inventory' && state.running && !state.over) togglePause();
+  if (pressed.has('p') && now.has('p') && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
 }
 window.addEventListener('gamepadconnected', () => toast('Controller connected', 1500));
 window.addEventListener('blur', () => { keys.clear(); if (state.running && !state.over && !state.paused) togglePause(); });
@@ -304,14 +319,14 @@ document.querySelectorAll('[data-key], [data-hold]').forEach((b) => {
 // ---------- Audio ----------
 let audio = null;
 function sfx(freq, dur = 0.08, type = 'square', vol = 0.05, slide = 0) {
-  if (!audio) return;
+  if (!audio || SETTINGS.volume <= 0) return;
   const t = audio.currentTime;
   const o = audio.createOscillator();
   const g = audio.createGain();
   o.type = type;
   o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
-  g.gain.setValueAtTime(vol, t);
+  g.gain.setValueAtTime(Math.max(0.0001, vol * SETTINGS.volume), t);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g).connect(audio.destination);
   o.start(t);
@@ -416,7 +431,7 @@ function updatePlayer(dt) {
   p.dashCd -= dt; p.slashCd -= dt; p.invuln -= dt; p.slashT -= dt;
   if ((pressed.has(' ') || pressed.has('touch-dash')) && p.dashCd <= 0) {
     p.dashT = 0.17; p.dashCd = 0.8; p.invuln = Math.max(p.invuln, 0.2);
-    sfx(300, 0.12, 'triangle', 0.04, -150);
+    play('cloth2', { vol: 0.7 }); play('swish');
   }
   if (p.dashT > 0) {
     p.dashT -= dt;
@@ -424,6 +439,11 @@ function updatePlayer(dt) {
   } else if (p.moving) {
     move(p, mx * speed * dt, my * speed * dt);
     p.step += dt * (p.sprint ? 14 : 9);
+    p.stepT = (p.stepT || 0) - dt;
+    if (p.stepT <= 0) {
+      if (inHedge) play('rustle'); else playStep(p.sprint);
+      p.stepT = p.sprint ? 0.27 : 0.4;
+    }
   }
 
   if (p.moving && p.sprint && !inHedge) {
@@ -443,15 +463,15 @@ function updatePlayer(dt) {
 
   // Pickups
   for (const c of state.coins) {
-    if (!c.taken && dist(c, p) < 20) { c.taken = true; p.gold += 12; sfx(880, 0.07, 'square', 0.035, 400); effect('sparkle', c.x, c.y); }
+    if (!c.taken && dist(c, p) < 20) { c.taken = true; p.gold += c.gold; play('coins2', { vol: 0.8 }); effect('sparkle', c.x, c.y); }
   }
   for (const c of state.cardPickups) {
-    if (!c.taken && dist(c, p) < 20) { c.taken = true; p.cards += 3; sfx(620, 0.08, 'triangle', 0.04, 200); toast('+3 cards'); }
+    if (!c.taken && dist(c, p) < 20) { c.taken = true; p.cards += c.count; play('belt', { vol: 0.8 }); play('card', { delay: 0.05 }); toast(`+${c.count} cards`); }
   }
 
   // Boat
   if (Math.hypot(p.x - BOAT.x, p.y - BOAT.y) < 70) {
-    if (p.hasLedger) finish(true);
+    if (p.hasLedger && !state.leaving) { state.leaving = true; endingScene().then(() => finish(true)); }
     else if (!updatePlayer.boatHint) { toast("Not leaving without Veyrane's ledger."); updatePlayer.boatHint = true; }
   } else updatePlayer.boatHint = false;
 }
@@ -477,7 +497,7 @@ function use() {
       const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
       p.x = dest.x; p.y = dest.y;
       effect('vault', v.wall.x, v.wall.y);
-      sfx(500, 0.18, 'sine', 0.05, 300);
+      play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
       toast('Tail on the ledge, over the wall.');
       return;
     }
@@ -486,8 +506,8 @@ function use() {
   if (!state.ledgerTaken && dist(LEDGER_SPOT, p) < 40) {
     state.ledgerTaken = true;
     p.hasLedger = true;
-    sfx(660, 0.25, 'triangle', 0.06, 330);
-    toast("Veyrane's ledger. Noe's contract is in here. Now get to the river.", 3200);
+    play('book'); play('jComplete', { vol: 0.7, delay: 0.25 });
+    ledgerScene();
     return;
   }
   // 4. Chests
@@ -495,27 +515,22 @@ function use() {
     if (!c.opened && dist(c, p) < 40) {
       c.opened = true;
       state.items[c.item] = (state.items[c.item] || 0) + 1;
+      noteNewItem(c.item);
       effect('sparkle', c.x, c.y);
-      sfx(660, 0.12, 'triangle', 0.05, 330);
-      setTimeout(() => sfx(990, 0.18, 'triangle', 0.05, 200), 120);
+      play('latch');
+      play('creak', { delay: 0.12 });
       toast(`Found ${c.item}. Press I to open your bag.`, 2600);
       return;
     }
   }
   // 5. The Soot kid at the docks
   if (dist(KID, p) < 44) {
-    if (p.gold > 0) {
-      p.given += p.gold;
-      toast(`${p.gold} gold to the kid. The mark never knew it was his.`, 2800);
-      p.gold = 0;
-      KID.helped = true;
-      sfx(520, 0.3, 'sine', 0.05, 520);
-    } else {
-      toast('"Got anything, Zay?" Not yet.');
-    }
+    talkToKid();
     return;
   }
-  // 6. Nothing nearby
+  // 6. The Blackwater fence
+  if (FENCE.x && dist(FENCE, p) < 44) { talkToFence(); return; }
+  // 7. Nothing nearby
   if (tileAt(p.x, p.y) !== 'h') toast('Nothing to use here.', 1100);
 }
 
@@ -525,7 +540,7 @@ function knockOut(g, silent) {
   state.kos += 1;
   effect('ko', g.x, g.y);
   shake(0.2);
-  sfx(silent ? 140 : 110, 0.15, 'triangle', 0.07, -60);
+  play('thud'); if (!silent) play('chop', { vol: 0.8 });
   if (!silent) noise(g.x, g.y, 120);
   else noise(g.x, g.y, 50);
 }
@@ -536,7 +551,7 @@ function throwCard(aimAtMouse) {
   p.cards -= 1;
   const a = aimAtMouse ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : p.dir;
   state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(a) * 430, vy: Math.sin(a) * 430, life: 0.62, spin: 0 });
-  sfx(1200, 0.05, 'triangle', 0.03, -400);
+  play('card');
 }
 
 function updateProjectiles(dt) {
@@ -549,14 +564,14 @@ function updateProjectiles(dt) {
         g.stunT = g.state === 'alert' ? 0.6 : 1.6;
         if (g.state !== 'alert') { g.prevState = g.state; g.state = 'stunned'; g.meter = Math.min(0.9, g.meter + 0.3); }
         effect('stun', g.x, g.y);
-        sfx(420, 0.1, 'square', 0.04);
+        play('chop', { vol: 0.6 });
       }
     }
     if (!c.done && (solidTile(tileAt(c.x, c.y)) || c.life <= 0)) {
       c.done = true;
       noise(c.x, c.y, 175);
       effect('card', c.x, c.y);
-      sfx(260, 0.06, 'square', 0.03);
+      play('uiTick', { vol: 0.9 }); play('card', { delay: 0.02 });
     }
   }
   state.projectiles = state.projectiles.filter((c) => !c.done);
@@ -566,7 +581,7 @@ function updateProjectiles(dt) {
 function raiseAlarm(g) {
   if (g.state !== 'alert') {
     state.alarms += 1;
-    sfx(180, 0.35, 'sawtooth', 0.05, 220);
+    play('jSpotted', { vol: 0.9 });
     toast('Spotted!', 1100);
     shake(0.45);
   }
@@ -707,7 +722,7 @@ function updateGuard(g, dt) {
 let camX = 0, camY = 0, shakeX = 0, shakeY = 0;
 const CAMERA_SMOOTHING = 6; // Godot Camera2D position_smoothing_speed
 let trauma = 0;
-function shake(amount) { trauma = Math.min(1, trauma + amount); }
+function shake(amount) { if (SETTINGS.shake) trauma = Math.min(1, trauma + amount); }
 function updateCamera(dt = 0, snap = false) {
   const p = state.player;
   const viewW = vw / zoom, viewH = vh / zoom;
@@ -766,6 +781,7 @@ function render() {
   const p = state.player;
   cutLight(p.x, p.y, 54, 0.45);
   cutLight(BOAT.x, BOAT.y, 70, 0.6);
+  if (FENCE.x) cutLight(FENCE.x + 10, FENCE.y + 4, 60, 0.7, lightPolygon(FENCE.x + 10, FENCE.y + 4, 60, 40));
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(dark, 0, 0);
   ctx.setTransform(s, 0, 0, s, -camLeft() * s, -camTop() * s);
@@ -777,6 +793,8 @@ function render() {
   for (const w of WINDOWS) if (inView(w.x, w.y, 40)) { ctx.fillStyle = 'rgba(240,190,110,0.78)'; ctx.fillRect(w.x, w.y, w.w, w.h); ctx.fillStyle = 'rgba(60,35,20,.9)'; ctx.fillRect(w.x + 3.5, w.y, 1, w.h); }
   for (const l of LAMPS) if (inView(l.x, l.y, 40)) drawLamp(l.x, l.y);
   drawEffects();
+  drawBarks();
+  drawInteractPrompt();
   drawObjectiveArrow();
 }
 function tracePoly(c, poly) {
@@ -811,14 +829,20 @@ function drawLamp(x, y) {
   ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI * 2); ctx.fill();
 }
 function drawWater() {
-  const x0 = 60 * TILE, t = state.time;
-  if (!inView(x0, camY + 100, 200)) return;
+  const t = state.time;
+  // Ripples on every water tile in view (the river can sit anywhere in the Tiled map).
+  const tx0 = Math.max(0, Math.floor(camX / TILE)), tx1 = Math.min(W - 1, Math.ceil((camX + vw / zoom) / TILE));
+  const ty0 = Math.max(0, Math.floor(camY / TILE)), ty1 = Math.min(H - 1, Math.ceil((camY + vh / zoom) / TILE));
   ctx.strokeStyle = 'rgba(120,160,220,0.18)';
   ctx.lineWidth = 1.5;
-  for (let y = Math.floor(camY / 24) * 24; y < camY + vh / zoom + 24; y += 24) {
-    ctx.beginPath();
-    for (let x = x0; x <= x0 + 4 * TILE; x += 8) ctx.lineTo(x, y + Math.sin(x * 0.08 + t * 1.6 + y) * 2.5);
-    ctx.stroke();
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+    if (grid[ty][tx] !== 'w') continue;
+    for (const oy of [6, 22]) {
+      const y = ty * TILE + oy;
+      ctx.beginPath();
+      for (let x = tx * TILE; x <= tx * TILE + TILE; x += 8) ctx.lineTo(x, y + Math.sin(x * 0.08 + t * 1.6 + y) * 2.5);
+      ctx.stroke();
+    }
   }
   // The boat
   ctx.save();
@@ -858,6 +882,20 @@ function drawProps() {
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(v.wall.x - 8, v.wall.y - 6); ctx.lineTo(v.wall.x + 8, v.wall.y - 6); ctx.stroke();
   }
+  // The Blackwater fence, hooded, with a lantern on the dock
+  if (FENCE.x && inView(FENCE.x, FENCE.y)) {
+    const f = FENCE;
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.beginPath(); ctx.ellipse(f.x, f.y + 6, 11, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1d221d';
+    ctx.beginPath(); ctx.arc(f.x, f.y, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#7a5440';
+    ctx.beginPath(); ctx.arc(f.x - 1, f.y - 2, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a2f2a';
+    ctx.beginPath(); ctx.arc(f.x - 1, f.y - 3, 5.5, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(255,214,140,${0.8 + Math.sin(state.time * 7) * 0.15})`;
+    ctx.beginPath(); ctx.arc(f.x + 10, f.y + 4, 3, 0, Math.PI * 2); ctx.fill();
+  }
   // The Soot kid
   const k = KID;
   ctx.fillStyle = '#2d2a3a';
@@ -896,6 +934,7 @@ function drawCard(x, y, spin) {
   ctx.restore();
 }
 function drawCone(g) {
+  if (!SETTINGS.cones) return;
   if (g.state === 'down' || g.state === 'stunned') return;
   const p = state.player;
   const range = p.lit ? 205 : 108;
@@ -1098,11 +1137,12 @@ function finish(won) {
   document.getElementById('end-stats').innerHTML = stats.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
   document.getElementById('touch').hidden = true;
   end.hidden = false;
-  sfx(won ? 520 : 140, 0.6, 'sine', 0.06, won ? 260 : -60);
+  setMusic(null);
+  play(won ? 'jComplete' : 'jCaught');
 }
 
 function start() {
-  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch { audio = null; } }
+  initAudio();
   state = newState();
   KID.helped = false;
   hudCache = '';
@@ -1116,19 +1156,26 @@ function start() {
   B.active = false;
   hudEls.hud.hidden = false;
   document.getElementById('touch').hidden = !isTouch;
-  toast('The Soot Quarter. Veyrane’s estate is north-east, past the lanterns.', 3000);
   trauma = 0;
   updateCamera(0, true);
+  setMusic('night');
   updateHud();
+  BARKS.length = 0;
+  setTimeout(() => { if (state.running && state.mode === 'field') openingScene(); }, 350);
+  updateBagBadge();
 }
 function togglePause() {
   state.paused = !state.paused;
+  suspendMusic(state.paused);
   document.getElementById('pause').hidden = !state.paused;
 }
 document.getElementById('start').addEventListener('click', start);
 document.getElementById('again').addEventListener('click', start);
 document.getElementById('resume').addEventListener('click', togglePause);
-document.getElementById('restart-pause').addEventListener('click', start);
+document.getElementById('restart-pause').addEventListener('click', async () => {
+  const ok = await confirmDialog('Restart the level?', 'ZAY goes back to the Soot Quarter. Everything from this run is lost: gold, items, levels.', 'Restart');
+  if (ok) start();
+});
 document.getElementById('pause-btn').addEventListener('click', () => { if (state.running) togglePause(); });
 
 let last = performance.now();
@@ -1140,17 +1187,22 @@ function frame(now) {
     state.time += dt;
     if (state.mode === 'battle') updateBattle(dt);
     else if (state.mode === 'inventory') updateInventory();
+    else if (state.mode === 'dialog') { if (DLG.prevMode === 'battle') updateBattle(dt); updateDialog(dt); }
+    else if (state.mode === 'shop') updateShop();
     else {
       updatePlayer(dt);
       updateProjectiles(dt);
       for (const g of state.guards) updateGuard(g, dt);
+      updateBarks(dt);
+      checkOverhear();
       for (const e of state.effects) e.t += dt;
       state.effects = state.effects.filter((e) => e.t < 0.7);
       updateHud();
     }
   }
   pressed.clear();
-  if (state.mode === 'battle') renderBattle();
+  if (!LEVEL) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#07080f'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  else if (state.mode === 'battle') renderBattle();
   else {
     updateCamera(dt);
     render();
@@ -1158,3 +1210,16 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+const startBtn = document.getElementById('start');
+startBtn.disabled = true;
+startBtn.textContent = 'Loading the city…';
+fetch(LEVEL_URL)
+  .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then((map) => {
+    buildLevel(map);
+    state = newState();
+    startBtn.disabled = false;
+    startBtn.textContent = 'Begin the job';
+  })
+  .catch(() => { startBtn.textContent = 'Could not load the level. Reload to try again.'; });

@@ -61,7 +61,8 @@ function startBattle(trigger) {
   bui.help.hidden = true;
   showMsg(B.enemies.length > 1 ? `${B.enemies.length} guards close in.` : `${B.enemies[0].name} blocks the way.`);
   renderBattleUI();
-  [220, 330, 440, 660].forEach((f, i) => setTimeout(() => sfx(f, 0.12, 'square', 0.04), i * 70));
+  play('encounter');
+  setMusic('battle');
 }
 
 function endBattle() {
@@ -86,6 +87,7 @@ function endBattle() {
   }
   B.active = false;
   state.mode = 'field';
+  setMusic('night');
   bui.root.hidden = true;
   hudEls.hud.hidden = false;
   document.getElementById('touch').hidden = !isTouch;
@@ -108,7 +110,7 @@ function commandsFor(m) {
 
 function openMenu(m) {
   B.menu = { actor: m, stage: 'command', index: 0, options: commandsFor(m), pending: null };
-  sfx(880, 0.05, 'square', 0.03);
+  play('uiOpen', { vol: 0.8 });
   renderBattleUI();
 }
 
@@ -135,8 +137,8 @@ function confirmMenu() {
   const m = menu.actor;
   if (menu.stage === 'command') {
     const opt = menu.options[menu.index];
-    if (opt.disabled) { sfx(140, 0.08, 'square', 0.03); return; }
-    sfx(1040, 0.04, 'square', 0.03);
+    if (opt.disabled) { play('uiError'); return; }
+    play('uiConfirm', { vol: 0.7 });
     if (opt.type === 'hit' || opt.type === 'steal') return chooseTarget('enemy', { type: opt.type, label: opt.label });
     if (opt.type === 'slash') return execute({ type: 'slash', label: 'Slash', targets: aliveOn('enemy') });
     if (opt.type === 'run') return execute({ type: 'run', label: 'Run', targets: [] });
@@ -149,8 +151,8 @@ function confirmMenu() {
     if (opt.type === 'item') return setStage('item', itemOptions());
   } else if (menu.stage === 'magic' || menu.stage === 'item') {
     const opt = menu.options[menu.index];
-    if (!opt || opt.disabled) { sfx(140, 0.08, 'square', 0.03); return; }
-    sfx(1040, 0.04, 'square', 0.03);
+    if (!opt || opt.disabled) { play('uiError'); return; }
+    play('uiConfirm', { vol: 0.7 });
     if (menu.stage === 'magic') return chooseTarget(SPELLS[opt.label].target, { type: 'magic', spell: opt.label, label: opt.label });
     const item = ITEMS[opt.label];
     if (item.target === 'none') return execute({ type: 'item', item: opt.label, label: opt.label, targets: [] });
@@ -158,7 +160,7 @@ function confirmMenu() {
   } else if (menu.stage === 'target') {
     const target = menu.targets[menu.index];
     if (!target) return;
-    sfx(1040, 0.04, 'square', 0.03);
+    play('uiConfirm', { vol: 0.7 });
     execute({ ...menu.pending, targets: [target] });
   }
 }
@@ -166,7 +168,7 @@ function confirmMenu() {
 function backMenu() {
   const menu = B.menu;
   if (!menu || menu.stage === 'command') return;
-  sfx(520, 0.04, 'square', 0.03);
+  play('uiBack');
   if (menu.stage === 'target' && (menu.back === 'magic' || menu.back === 'item')) {
     const stage = menu.back;
     B.menu.stage = 'command';
@@ -185,7 +187,7 @@ function moveCursor(delta) {
   const n = menu.stage === 'target' ? menu.targets.length : menu.options.length;
   if (!n) return;
   menu.index = (menu.index + delta + n) % n;
-  sfx(660, 0.03, 'square', 0.02);
+  play('uiMove');
   renderBattleUI();
 }
 
@@ -210,19 +212,19 @@ function damage(atk, def, scale = 1) {
 function hurt(target, amount, crit) {
   target.hp = Math.max(0, target.hp - amount);
   target.flash = 0.25;
-  B.shake = Math.min(1, (B.shake || 0) + (crit ? 0.55 : 0.28));
+  if (SETTINGS.shake) B.shake = Math.min(1, (B.shake || 0) + (crit ? 0.55 : 0.28));
   popup(target, String(amount) + (crit ? '!' : ''), crit ? '#ffe08a' : '#ffffff');
   if (target.hp === 0) {
     target.alive = false;
     target.atb = 0;
-    sfx(target.side === 'enemy' ? 160 : 90, 0.3, 'sawtooth', 0.05, -80);
+    play('thud'); play('ko', { delay: 0.05 });
   }
 }
 
 function heal(target, amount) {
   target.hp = Math.min(target.maxHp, target.hp + amount);
   popup(target, String(amount), '#8ef0a2');
-  sfx(700, 0.25, 'sine', 0.05, 500);
+  play('heal');
 }
 
 function useItemOn(name, target) {
@@ -232,7 +234,7 @@ function useItemOn(name, target) {
     target.alive = true;
     target.hp = Math.max(1, Math.round(target.maxHp * fx.revive));
     popup(target, 'Revived', '#8ef0a2');
-    sfx(600, 0.35, 'sine', 0.05, 600);
+    play('heal'); play('uiConfirm', { delay: 0.2 });
     return true;
   }
   if (!target.alive) { popup(target, 'No effect', '#c9c3b2'); return false; }
@@ -240,7 +242,7 @@ function useItemOn(name, target) {
   if (fx.mp) {
     target.mp = Math.min(target.maxMp, target.mp + fx.mp);
     popup(target, `+${fx.mp} MP`, '#9fd3ff');
-    sfx(820, 0.25, 'sine', 0.05, 400);
+    play('heal');
   }
   return true;
 }
@@ -253,10 +255,11 @@ function apply(a) {
     if (!t) return;
     const d = damage(stat(actor, 'atk'), stat(t, 'def'));
     hurt(t, d.amount, d.crit);
-    sfx(240, 0.08, 'square', 0.06, -120);
+    if (actor.side === 'party') play(d.crit ? 'clang' : (Math.random() < 0.5 ? 'slice' : 'slice2'), { vol: d.crit ? 0.8 : 1 });
+    else { play('chop'); play('thump', { delay: 0.02 }); }
   } else if (a.type === 'slash') {
     for (const t of aliveOn('enemy')) { const d = damage(stat(actor, 'atk'), stat(t, 'def'), 0.85); hurt(t, d.amount, d.crit); }
-    sfx(900, 0.18, 'sawtooth', 0.05, -700);
+    play('draw'); play('slice', { delay: 0.12 }); play('slice2', { delay: 0.22 });
   } else if (a.type === 'magic') {
     const spell = SPELLS[a.spell];
     const t = targets[0];
@@ -265,7 +268,7 @@ function apply(a) {
     if (spell.kind === 'heal') heal(t, Math.round(stat(actor, 'mag') * spell.power * randBetween(0.95, 1.1)));
     else {
       hurt(t, Math.max(1, Math.round(stat(actor, 'mag') * spell.power * randBetween(0.9, 1.1) - stat(t, 'def') * 0.5)), false);
-      sfx(a.spell === 'Fire' ? 180 : 1400, 0.3, 'sawtooth', 0.04, a.spell === 'Fire' ? -100 : -900);
+      play(a.spell === 'Fire' ? 'fire' : 'ice');
     }
   } else if (a.type === 'steal') {
     const t = targets[0];
@@ -282,13 +285,15 @@ function apply(a) {
         showMsg(`Stole ${loot.gold} gold!`);
       } else {
         state.items[loot.item] = (state.items[loot.item] || 0) + 1;
+        noteNewItem(loot.item);
         state.stolen.push(loot.item);
         popup(t, loot.item, '#f3d79a');
         showMsg(`Stole a ${loot.item}!`);
       }
-      sfx(1200, 0.12, 'triangle', 0.05, 600);
+      play('coins2');
     } else {
       popup(t, 'Missed', '#c9c3b2');
+      play('miss');
       showMsg("Couldn't steal anything.");
     }
   } else if (a.type === 'item') {
@@ -297,13 +302,13 @@ function apply(a) {
       B.result = 'run';
       B.fx.push({ kind: 'smoke', target: actor, t: 0, color: '#c9cbd8' });
       showMsg('A pop, a cloud, and ZAY is gone.');
-      sfx(300, 0.4, 'triangle', 0.05, -200);
+      play('smoke');
       return;
     }
     const t = targets[0];
     if (t) useItemOn(a.item, t);
   } else if (a.type === 'run') {
-    if (Math.random() < 0.6) { B.result = 'run'; showMsg('Slipped away into the dark.'); sfx(400, 0.3, 'triangle', 0.05, 400); }
+    if (Math.random() < 0.6) { B.result = 'run'; showMsg('Slipped away into the dark.'); play('cloth2'); play('swish', { delay: 0.1 }); }
     else showMsg("Couldn't get away!");
   }
 }
@@ -321,9 +326,8 @@ function checkEnd() {
   if (!aliveOn('enemy').length) {
     B.result = 'win';
     B.rewards = collectRewards();
-    sfx(523, 0.15, 'square', 0.05);
-    setTimeout(() => sfx(659, 0.15, 'square', 0.05), 150);
-    setTimeout(() => sfx(784, 0.35, 'square', 0.05), 300);
+    setMusic(null);
+    play('jVictory');
   } else if (!aliveOn('party').length) {
     B.result = 'lose';
   }
@@ -337,7 +341,7 @@ function collectRewards() {
   const found = [];
   for (const e of B.enemies) {
     for (const d of e.drops || []) {
-      if (Math.random() < d.chance) { found.push(d.item); state.items[d.item] = (state.items[d.item] || 0) + 1; }
+      if (Math.random() < d.chance) { found.push(d.item); state.items[d.item] = (state.items[d.item] || 0) + 1; noteNewItem(d.item); }
     }
   }
   state.player.gold += gold;
@@ -375,7 +379,7 @@ function showResult() {
       li.innerHTML = `<span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b>`;
       bui.resultList.append(li);
     }
-    if (r.levelUps.length) setTimeout(() => sfx(988, 0.4, 'square', 0.05, 300), 500);
+    if (r.levelUps.length) play('jLevel', { delay: 1.0 });
   } else {
     bui.resultTitle.textContent = 'ZAY is down';
     bui.resultText.textContent = 'The lantern light closes in.';
@@ -430,7 +434,7 @@ function updateBattle(dt) {
   if (B.menu) return; // wait mode: time stops while you choose
 
   const all = [...B.enemies, ...B.party].filter((c) => c.alive);
-  for (const c of all) c.atb = Math.min(100, c.atb + stat(c, 'spd') * dt * 3);
+  for (const c of all) c.atb = Math.min(100, c.atb + stat(c, 'spd') * dt * 3 * SETTINGS.battleSpeed);
   const readyEnemy = B.enemies.find((e) => e.alive && e.atb >= 100);
   if (readyEnemy) { enemyTurn(readyEnemy); return; }
   const readyHero = B.party.find((m) => m.alive && m.atb >= 100);
@@ -578,7 +582,7 @@ function battlePositions(areaH) {
 
 function renderBattle() {
   const areaH = Math.max(200, vh - (bui.root.offsetHeight || 0));
-  const s = Math.max(0.8, Math.min(1.7, areaH / 320));
+  const s = Math.max(0.72, Math.min(1.5, areaH / 360));
   const quake = (B.shake || 0) ** 2 * 8;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#07080f';
@@ -630,14 +634,14 @@ function renderBattle() {
     const reach = k < 0.45 ? Ease.backOut(k / 0.45) : k < 0.6 ? 1 : 1 - Ease.sineInOut((k - 0.6) / 0.4);
     return reach * 46 * s * (c.side === 'enemy' ? 1 : -1);
   };
-  for (const e of B.enemies) {
+  for (const e of [...B.enemies].sort((a, b) => a.by - b.by)) {
     if (e.fade >= 1) continue;
     ctx.save();
     ctx.globalAlpha = 1 - e.fade;
     drawBattleGuard(e.bx + lunge(e), e.by, s, e);
     ctx.restore();
   }
-  for (const m of B.party) drawBattleHero(m.bx + lunge(m), m.by, s, m, B.menu && B.menu.actor === m);
+  for (const m of [...B.party].sort((a, b) => a.by - b.by)) drawBattleHero(m.bx + lunge(m), m.by, s, m, B.menu && B.menu.actor === m);
 
   // Spell effects
   for (const f of B.fx) {
@@ -702,100 +706,322 @@ function renderBattle() {
   }
 }
 
+// ---------- Battle character models ----------
+// Figures are drawn facing right in local units (feet at y = 0, about 100 units tall), then scaled.
+// Party members are mirrored so they face the enemies. Poses: idle breathing, attack wind-up and strike,
+// flinch when hit, a kneel at low HP (Final Fantasy "critical"), and knocked out.
+
+function poseOf(c) {
+  const a = B.anim;
+  const attacking = a && a.actor === c && (a.type === 'hit' || a.type === 'slash' || a.type === 'steal');
+  const casting = a && a.actor === c && (a.type === 'magic' || a.type === 'item');
+  const k = attacking || casting ? Math.min(1, a.t / a.dur) : 0;
+  // swing: 0 = rest, -1 = wound up, +1 = follow-through
+  let swing = 0;
+  if (attacking) swing = k < 0.35 ? -Ease.cubicOut(k / 0.35) : k < 0.55 ? -1 + 2 * Ease.backOut((k - 0.35) / 0.2) : 1 - Ease.sineInOut((k - 0.55) / 0.45);
+  return {
+    t: B.t + (c.bx || 0) * 0.01,
+    breathe: Math.sin((B.t + (c.by || 0) * 0.02) * 2.6),
+    swing,
+    attacking: Boolean(attacking),
+    casting: casting ? Math.sin(Math.PI * k) : 0,
+    flinch: c.flash > 0 ? c.flash / 0.25 : 0,
+    critical: c.alive && c.maxHp && c.hp / c.maxHp <= 0.25
+  };
+}
+
+function limb(x1, y1, x2, y2, w, fill, edge) {
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = w + 2.2;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.strokeStyle = fill;
+  ctx.lineWidth = w;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+// Two-bone limb from a root with two angles (radians, 0 = pointing down).
+function arm(x, y, a1, l1, a2, l2, w, fill, edge) {
+  const ex = x + Math.sin(a1) * l1, ey = y + Math.cos(a1) * l1;
+  const hx = ex + Math.sin(a1 + a2) * l2, hy = ey + Math.cos(a1 + a2) * l2;
+  limb(x, y, ex, ey, w, fill, edge);
+  limb(ex, ey, hx, hy, w * 0.86, fill, edge);
+  return { ex, ey, hx, hy, ang: a1 + a2 };
+}
+function shade(top, bottom, y1, y2) {
+  const g = ctx.createLinearGradient(0, y1, 0, y2);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  return g;
+}
+function groundShadow(w) {
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w);
+  g.addColorStop(0, 'rgba(0,0,0,.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(0, 0, w, w * 0.26, 0, 0, Math.PI * 2); ctx.fill();
+}
+function flashOver(p) { return p.flinch > 0 && Math.floor(p.flinch * 8) % 2 === 0; }
+
 function drawBattleGuard(x, y, s, e) {
+  const p = poseOf(e);
+  const captain = e.name === 'Estate Captain';
+  const coat = e.coat, coatDark = captain ? '#241733' : '#141a2e', trim = e.trim, skin = '#5a3b2b', skinDark = '#3e281d';
+  const edge = '#07080f';
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.beginPath(); ctx.ellipse(0, 2, 22, 6, 0, 0, Math.PI * 2); ctx.fill();
-  const flash = e.flash > 0 && Math.floor(e.flash * 30) % 2 === 0;
-  // legs
-  ctx.fillStyle = '#15151d';
-  ctx.fillRect(-9, -18, 7, 18); ctx.fillRect(3, -18, 7, 18);
-  // coat
-  ctx.fillStyle = flash ? '#ffffff' : e.coat;
-  ctx.beginPath(); ctx.moveTo(-14, -16); ctx.lineTo(14, -16); ctx.lineTo(11, -52); ctx.lineTo(-11, -52); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = e.trim;
-  ctx.fillRect(-1.5, -52, 3, 36);
-  ctx.fillRect(-12, -24, 24, 3);
-  // head + tricorne
-  ctx.fillStyle = '#5a3b2b';
-  ctx.beginPath(); ctx.arc(2, -60, 8, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#12141f';
-  ctx.beginPath(); ctx.moveTo(-12, -64); ctx.lineTo(14, -66); ctx.lineTo(4, -76); ctx.closePath(); ctx.fill();
-  // baton arm, lantern on the belt
-  ctx.strokeStyle = '#3a2a1f'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(8, -44); ctx.lineTo(24, -30); ctx.stroke();
-  ctx.fillStyle = '#ffd88a';
-  ctx.beginPath(); ctx.arc(-14, -26, 4, 0, Math.PI * 2); ctx.fill();
+  groundShadow(30);
+  ctx.rotate(-p.flinch * 0.12);
+  const lean = p.flinch * -4 + p.swing * 3;
+  const by = p.breathe * 0.8;
+  const hipX = lean * 0.4, hipY = -46;
+  const shX = 3 + lean, shY = -74 + by;
+
+  // Captain's cape behind everything
+  if (captain) {
+    ctx.fillStyle = shade('#6a1f2c', '#3a0f18', -78, -14);
+    ctx.beginPath();
+    ctx.moveTo(shX - 12, shY + 2);
+    ctx.quadraticCurveTo(-26 + Math.sin(p.t * 1.7) * 3, -40, -22 + Math.sin(p.t * 1.7) * 4, -14);
+    ctx.lineTo(4, -18); ctx.lineTo(shX + 8, shY + 2); ctx.closePath(); ctx.fill();
+  }
+  // Back leg
+  limb(hipX - 3, hipY, hipX - 10, -24, 8, '#151520', edge);
+  limb(hipX - 10, -24, hipX - 8, -4, 7, '#151520', edge);
+  ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.ellipse(hipX - 5, -2, 8, 3.6, 0, 0, Math.PI * 2); ctx.fill();
+  // Back arm holding the lantern
+  const back = arm(shX - 8, shY + 4, 0.25, 15, -0.35, 14, 6.5, coatDark, edge);
+  const flick = 0.75 + Math.sin(p.t * 11) * 0.12 + Math.sin(p.t * 7.3) * 0.08;
+  const lg = ctx.createRadialGradient(back.hx, back.hy + 6, 0, back.hx, back.hy + 6, 34);
+  lg.addColorStop(0, `rgba(255,200,110,${0.42 * flick})`);
+  lg.addColorStop(1, 'rgba(255,200,110,0)');
+  ctx.fillStyle = lg;
+  ctx.beginPath(); ctx.arc(back.hx, back.hy + 6, 34, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#3a2a1a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(back.hx, back.hy); ctx.lineTo(back.hx, back.hy + 3); ctx.stroke();
+  ctx.fillStyle = '#2a1e14'; ctx.fillRect(back.hx - 4.5, back.hy + 3, 9, 2); ctx.fillRect(back.hx - 4.5, back.hy + 12, 9, 2);
+  ctx.fillStyle = `rgba(255,214,140,${flick})`; ctx.fillRect(back.hx - 3.5, back.hy + 5, 7, 7);
+  // Coat skirt
+  ctx.fillStyle = shade(coat, coatDark, -50, -16);
+  ctx.beginPath();
+  ctx.moveTo(hipX - 12, -50); ctx.lineTo(hipX + 13, -50);
+  ctx.lineTo(hipX + 16 + lean * 0.3, -17); ctx.quadraticCurveTo(hipX, -14, hipX - 15, -18);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = trim; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(hipX - 15, -18.5); ctx.quadraticCurveTo(hipX, -14.5, hipX + 16 + lean * 0.3, -17.5); ctx.stroke();
+  // Front leg
+  limb(hipX + 4, hipY, hipX + 9, -24, 8.5, '#1b1b27', edge);
+  limb(hipX + 9, -24, hipX + 7, -4, 7.5, '#1b1b27', edge);
+  ctx.fillStyle = '#0d0d13'; ctx.beginPath(); ctx.ellipse(hipX + 11, -2.5, 9, 3.8, 0, 0, Math.PI * 2); ctx.fill();
+  // Torso
+  ctx.fillStyle = flashOver(p) ? '#ffffff' : shade(coat, coatDark, shY - 4, -46);
+  ctx.beginPath();
+  ctx.moveTo(shX - 13, shY + 1); ctx.quadraticCurveTo(shX + 2, shY - 4, shX + 14, shY + 1);
+  ctx.lineTo(hipX + 12, -48); ctx.lineTo(hipX - 11, -48); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = edge; ctx.lineWidth = 1.2; ctx.stroke();
+  // Lapel, buttons, sash, belt
+  ctx.strokeStyle = trim; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(shX + 4, shY + 1); ctx.lineTo(hipX + 3, -50); ctx.stroke();
+  ctx.fillStyle = trim;
+  for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(shX + 7 - i * 0.8, shY + 7 + i * 6, 1.3, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = captain ? '#8a2333' : '#7a1f22';
+  ctx.beginPath(); ctx.moveTo(shX - 10, shY + 3); ctx.lineTo(shX - 4, shY + 3); ctx.lineTo(hipX + 12, -52); ctx.lineTo(hipX + 6, -52); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#1a120c'; ctx.fillRect(hipX - 12, -51, 25, 4);
+  ctx.fillStyle = trim; ctx.fillRect(hipX + 1, -51, 4, 4);
+  if (captain) {
+    ctx.fillStyle = trim;
+    ctx.beginPath(); ctx.ellipse(shX + 10, shY + 1, 6, 2.4, 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(shX - 9, shY + 1, 5, 2.2, -0.2, 0, Math.PI * 2); ctx.fill();
+  }
+  // Head
+  const hx = shX + 2, hy = shY - 13;
+  limb(shX + 1, shY, hx, hy + 6, 5, skinDark, edge);
+  ctx.fillStyle = flashOver(p) ? '#ffffff' : skin;
+  ctx.beginPath(); ctx.ellipse(hx, hy, 8, 9.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = edge; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.fillStyle = skinDark; ctx.beginPath(); ctx.ellipse(hx - 5, hy + 1, 2.4, 3.4, 0, 0, Math.PI * 2); ctx.fill(); // ear
+  ctx.fillStyle = '#f1ead9'; ctx.fillRect(hx + 4, hy - 1.5, 2.6, 1.8);
+  ctx.fillStyle = '#1a120c'; ctx.fillRect(hx + 5.2, hy - 1.4, 1.3, 1.6);
+  ctx.strokeStyle = skinDark; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx + 4, hy + 5); ctx.lineTo(hx + 7, hy + 4.5); ctx.stroke();
+  // Tricorne
+  ctx.fillStyle = '#10121c';
+  ctx.beginPath(); ctx.moveTo(hx - 13, hy - 4); ctx.quadraticCurveTo(hx, hy - 9, hx + 14, hy - 5); ctx.lineTo(hx + 6, hy - 16); ctx.lineTo(hx - 6, hy - 16); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = trim; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(hx - 13, hy - 4); ctx.quadraticCurveTo(hx, hy - 9, hx + 14, hy - 5); ctx.stroke();
+  if (captain) {
+    ctx.strokeStyle = '#c63a4a'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(hx - 4, hy - 14); ctx.quadraticCurveTo(hx - 16, hy - 26 + Math.sin(p.t * 3) * 2, hx - 22, hy - 18); ctx.stroke();
+  }
+  // Weapon arm: rest -> wind up (raised) -> strike forward
+  const a1 = 0.55 + p.swing * 1.25, a2 = -0.9 - p.swing * 0.5;
+  const front = arm(shX + 9, shY + 3, a1 + Math.PI * 0, 15, a2, 14, 7, coat, edge);
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(front.hx, front.hy, 3.4, 0, Math.PI * 2); ctx.fill();
+  const wAng = front.ang + Math.PI - 0.5;
+  const wl = captain ? 34 : 26;
+  const tipX = front.hx + Math.sin(wAng) * wl, tipY = front.hy + Math.cos(wAng) * wl;
+  if (captain) {
+    ctx.strokeStyle = '#d4d8e4'; ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.moveTo(front.hx, front.hy); ctx.quadraticCurveTo((front.hx + tipX) / 2 + 4, (front.hy + tipY) / 2, tipX, tipY); ctx.stroke();
+    ctx.fillStyle = trim; ctx.fillRect(front.hx - 3, front.hy - 1.5, 6, 3);
+  } else {
+    limb(front.hx, front.hy, tipX, tipY, 4.2, '#4a3220', edge);
+    ctx.fillStyle = '#6b6b78'; ctx.beginPath(); ctx.arc(tipX, tipY, 2.6, 0, Math.PI * 2); ctx.fill();
+  }
+  if (p.attacking && Math.abs(p.swing) > 0.3) {
+    ctx.strokeStyle = `rgba(255,236,200,${0.35 * Math.abs(p.swing)})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(shX + 9, shY + 3, wl + 26, -1.2, 0.6 + p.swing * 0.6); ctx.stroke();
+  }
   ctx.restore();
 }
 
 function drawBattleHero(x, y, s, m, active) {
+  const p = poseOf(m);
+  const look = m.look;
+  const edge = '#050507';
   ctx.save();
   ctx.translate(x, y);
-  ctx.scale(s, s);
+  ctx.scale(-s, s); // face the enemies on the left
+
   if (!m.alive) {
-    ctx.fillStyle = m.look.body;
-    ctx.beginPath(); ctx.ellipse(0, -6, 26, 8, 0, 0, Math.PI * 2); ctx.fill();
+    // Knocked out: lying on the street
+    groundShadow(36);
+    ctx.fillStyle = look.body;
+    ctx.beginPath(); ctx.ellipse(-4, -6, 30, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = look.skin; ctx.beginPath(); ctx.arc(26, -8, 7, 0, Math.PI * 2); ctx.fill();
+    if (look.tail) { ctx.strokeStyle = '#2a1a14'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-30, -6); ctx.quadraticCurveTo(-44, -2, -50, -10); ctx.stroke(); }
     ctx.restore();
     return;
   }
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.beginPath(); ctx.ellipse(0, 2, 20, 6, 0, 0, Math.PI * 2); ctx.fill();
+  groundShadow(30);
   if (active) {
-    const g = ctx.createRadialGradient(0, -36, 0, 0, -36, 46);
-    g.addColorStop(0, 'rgba(243,215,154,.28)');
+    const g = ctx.createRadialGradient(0, -48, 0, 0, -48, 58);
+    g.addColorStop(0, 'rgba(243,215,154,.22)');
     g.addColorStop(1, 'rgba(243,215,154,0)');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(0, -36, 46, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -48, 58, 0, Math.PI * 2); ctx.fill();
   }
-  const flash = m.flash > 0 && Math.floor(m.flash * 30) % 2 === 0;
-  const look = m.look;
-  const breathe = Math.sin(B.t * 3) * 1;
-  // tail (ZAY)
+  ctx.rotate(-p.flinch * 0.14);
+  const kneel = p.critical ? 1 : 0;
+  const lean = 5 + p.swing * 4 - p.flinch * 5 + kneel * 4;
+  const by = p.breathe * (p.critical ? 1.8 : 0.9);
+  const hipY = -42 + kneel * 12, hipX = lean * 0.3;
+  const shX = 4 + lean, shY = -68 + by + kneel * 14;
+  const cloth = look.body, clothHi = look.style === 'rogue' ? '#262634' : look.trim;
+
+  // Tail (ZAY): long, darker than his skin, with its own attitude
   if (look.tail) {
-    ctx.strokeStyle = '#2a1a14'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
-    const sway = Math.sin(B.t * 4) * 6;
-    ctx.beginPath(); ctx.moveTo(8, -24); ctx.quadraticCurveTo(26, -20 + sway, 30, -40 + sway); ctx.stroke();
+    const sw = Math.sin(p.t * 2.2) * 7, sw2 = Math.cos(p.t * 1.6) * 6;
+    ctx.strokeStyle = edge; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(hipX - 6, hipY - 2); ctx.bezierCurveTo(-30, hipY + 6 + sw, -40, hipY - 26 + sw2, -30 + sw2, hipY - 44); ctx.stroke();
+    ctx.strokeStyle = '#2e1d15'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(hipX - 6, hipY - 2); ctx.bezierCurveTo(-30, hipY + 6 + sw, -40, hipY - 26 + sw2, -30 + sw2, hipY - 44); ctx.stroke();
   }
-  // legs
-  ctx.fillStyle = '#0d0d13';
-  ctx.fillRect(-8, -18, 6, 18); ctx.fillRect(2, -18, 6, 18);
-  // body
-  ctx.fillStyle = flash ? '#ffffff' : look.body;
-  if (look.style === 'caster') {
-    ctx.beginPath(); ctx.moveTo(-14, -2); ctx.lineTo(14, -2); ctx.lineTo(8, -50 + breathe); ctx.lineTo(-8, -50 + breathe); ctx.closePath(); ctx.fill();
-  } else {
-    ctx.beginPath(); ctx.moveTo(-11, -16); ctx.lineTo(11, -16); ctx.lineTo(9, -50 + breathe); ctx.lineTo(-9, -50 + breathe); ctx.closePath(); ctx.fill();
-  }
-  ctx.fillStyle = look.trim;
-  ctx.fillRect(-10, -26, 20, 2.5);
-  // head
-  ctx.fillStyle = look.skin;
-  ctx.beginPath(); ctx.arc(-2, -58 + breathe, 8, 0, Math.PI * 2); ctx.fill();
+  // Back leg (crouched rogue stance)
+  const knee2 = kneel ? { x: hipX - 14, y: -2 } : { x: hipX - 12, y: -22 };
+  limb(hipX - 3, hipY, knee2.x, knee2.y, 8, '#101016', edge);
+  limb(knee2.x, knee2.y, hipX - 16, -3, 7, '#101016', edge);
+  ctx.fillStyle = '#08080c'; ctx.beginPath(); ctx.ellipse(hipX - 13, -2, 7.5, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+  // Back arm
+  const backA = p.casting ? arm(shX - 7, shY + 4, 2.4, 13, 0.2, 13, 6, cloth, edge)
+    : arm(shX - 7, shY + 4, -0.35 + p.swing * 0.3, 14, -0.6, 13, 6, cloth, edge);
+  ctx.fillStyle = '#d8d2c4'; ctx.beginPath(); ctx.arc(backA.hx, backA.hy, 2.6, 0, Math.PI * 2); ctx.fill(); // wrapped wrist
+  // Hip daggers (rogue): one on each hip
   if (look.style === 'rogue') {
-    // hood, mask and gold eyes
-    ctx.fillStyle = '#0b0b10';
-    ctx.beginPath(); ctx.arc(-1, -59 + breathe, 9, Math.PI * 0.9, Math.PI * 2.1); ctx.fill();
-    ctx.fillRect(-10, -56 + breathe, 12, 5);
-    ctx.fillStyle = '#f3c25c';
-    ctx.fillRect(-8, -60 + breathe, 3, 2);
-    // katana across the back, daggers at the hips
-    ctx.strokeStyle = '#d4d4e0'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(10, -66); ctx.lineTo(-6, -26); ctx.stroke();
-    ctx.fillStyle = look.trim; ctx.fillRect(9, -70, 4, 6);
-    ctx.fillStyle = '#c9c9d6'; ctx.fillRect(-13, -22, 3, 9); ctx.fillRect(10, -22, 3, 9);
-  } else if (look.style === 'caster') {
-    ctx.fillStyle = look.trim;
-    ctx.beginPath(); ctx.moveTo(-14, -62 + breathe); ctx.lineTo(10, -62 + breathe); ctx.lineTo(-4, -86 + breathe); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(-16, -60); ctx.stroke();
-    ctx.fillStyle = '#9fd3ff'; ctx.beginPath(); ctx.arc(-16, -62, 4, 0, Math.PI * 2); ctx.fill();
-  } else {
-    ctx.strokeStyle = '#d4d4e0'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(-12, -36); ctx.lineTo(-30, -66); ctx.stroke();
-    ctx.fillStyle = look.trim; ctx.fillRect(-14, -38, 6, 4);
+    ctx.fillStyle = '#c9c9d6'; ctx.fillRect(hipX - 12, hipY - 3, 3, 12);
+    ctx.fillStyle = '#5a3b2b'; ctx.fillRect(hipX - 12.5, hipY - 7, 4, 5);
   }
+  // Coat / robe
+  if (look.style === 'caster') {
+    ctx.fillStyle = shade(cloth, '#120c1c', shY, 0);
+    ctx.beginPath(); ctx.moveTo(shX - 11, shY + 2); ctx.lineTo(shX + 11, shY + 2); ctx.lineTo(hipX + 18, -2); ctx.lineTo(hipX - 18, -2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = look.trim; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(hipX - 18, -3); ctx.lineTo(hipX + 18, -3); ctx.stroke();
+  } else {
+    ctx.fillStyle = shade(clothHi, cloth, hipY - 8, hipY + 18);
+    ctx.beginPath();
+    ctx.moveTo(hipX - 11, hipY - 6); ctx.lineTo(hipX + 12, hipY - 6);
+    ctx.lineTo(hipX + 13 + Math.sin(p.t * 2) * 1.5, hipY + 14); ctx.lineTo(hipX - 14 + Math.sin(p.t * 2 + 1) * 1.5, hipY + 12);
+    ctx.closePath(); ctx.fill();
+  }
+  // Front leg
+  const knee1 = kneel ? { x: hipX + 12, y: -14 } : { x: hipX + 11, y: -22 };
+  limb(hipX + 4, hipY, knee1.x, knee1.y, 8.5, '#15151d', edge);
+  limb(knee1.x, knee1.y, hipX + 10, -3, 7.5, '#15151d', edge);
+  ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.ellipse(hipX + 14, -2.4, 8, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+  // Torso: hooded half coat
+  ctx.fillStyle = flashOver(p) ? '#ffffff' : shade(clothHi, cloth, shY - 2, hipY);
+  ctx.beginPath();
+  ctx.moveTo(shX - 11, shY + 1); ctx.quadraticCurveTo(shX + 1, shY - 3, shX + 11, shY + 1);
+  ctx.lineTo(hipX + 11, hipY - 4); ctx.lineTo(hipX - 10, hipY - 4); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = edge; ctx.lineWidth = 1.2; ctx.stroke();
+  if (look.style === 'sword') { ctx.fillStyle = 'rgba(210,215,230,.55)'; ctx.fillRect(shX - 9, shY + 4, 18, 9); }
+  ctx.strokeStyle = look.trim; ctx.lineWidth = 1.2; ctx.globalAlpha = 0.55;
+  ctx.beginPath(); ctx.moveTo(hipX - 10, hipY - 6); ctx.lineTo(hipX + 11, hipY - 6); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // Katana across the back when not in hand is skipped: in battle he holds it.
+  // Head
+  const hx = shX + 3, hy = shY - 12;
+  limb(shX + 1, shY, hx, hy + 6, 5, look.skin, edge);
+  if (look.style === 'rogue') {
+    // Locs gathered back, under the hood
+    ctx.strokeStyle = '#1a110c'; ctx.lineWidth = 3.2; ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(hx - 5, hy - 2 + i * 2); ctx.quadraticCurveTo(hx - 14, hy + 2 + i * 3 + Math.sin(p.t * 2 + i) * 1.5, hx - 15, hy + 9 + i * 2); ctx.stroke(); }
+  }
+  ctx.fillStyle = flashOver(p) ? '#ffffff' : look.skin;
+  ctx.beginPath(); ctx.ellipse(hx, hy, 7.5, 9, 0.05, 0, Math.PI * 2); ctx.fill();
+  if (look.style === 'rogue') {
+    // Hood and mask; hazel-gold eyes; a pointed elven ear
+    ctx.fillStyle = '#0c0c12';
+    ctx.beginPath(); ctx.moveTo(hx - 10, hy + 7); ctx.quadraticCurveTo(hx - 12, hy - 14, hx + 3, hy - 12); ctx.quadraticCurveTo(hx + 10, hy - 10, hx + 9, hy - 3); ctx.lineTo(hx + 2, hy - 4); ctx.quadraticCurveTo(hx - 4, hy - 6, hx - 5, hy + 7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#121218';
+    ctx.beginPath(); ctx.moveTo(hx - 3, hy + 1); ctx.lineTo(hx + 8.5, hy + 0.5); ctx.quadraticCurveTo(hx + 9, hy + 7, hx + 3, hy + 9); ctx.lineTo(hx - 4, hy + 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = look.skin;
+    ctx.beginPath(); ctx.moveTo(hx - 5, hy - 3); ctx.lineTo(hx - 12, hy - 9); ctx.lineTo(hx - 6, hy + 1); ctx.closePath(); ctx.fill();
+    const glow = 0.85 + Math.sin(p.t * 3) * 0.15;
+    ctx.fillStyle = `rgba(243,194,92,${glow})`; ctx.fillRect(hx + 3.5, hy - 2.4, 3.2, 1.8);
+    ctx.fillStyle = 'rgba(243,194,92,.25)'; ctx.beginPath(); ctx.arc(hx + 5, hy - 1.5, 4, 0, Math.PI * 2); ctx.fill();
+  } else if (look.style === 'caster') {
+    ctx.fillStyle = '#f1ead9'; ctx.fillRect(hx + 3.5, hy - 2, 2.4, 1.8);
+    ctx.fillStyle = look.trim;
+    ctx.beginPath(); ctx.moveTo(hx - 14, hy - 5); ctx.lineTo(hx + 12, hy - 6); ctx.lineTo(hx - 6, hy - 30 + Math.sin(p.t * 2) * 2); ctx.closePath(); ctx.fill();
+  } else {
+    ctx.fillStyle = '#f1ead9'; ctx.fillRect(hx + 3.5, hy - 2, 2.4, 1.8);
+    ctx.fillStyle = '#8a8fa0';
+    ctx.beginPath(); ctx.arc(hx, hy - 3, 9, Math.PI, 0); ctx.fill();
+  }
+  // Weapon arm
+  let a1, a2;
+  if (p.casting) { a1 = 2.5; a2 = 0.3; } else { a1 = 0.7 + p.swing * 1.3; a2 = -1.0 - p.swing * 0.4; }
+  const front = arm(shX + 8, shY + 3, a1, 14, a2, 13, 6.5, cloth, edge);
+  ctx.fillStyle = '#d8d2c4'; ctx.beginPath(); ctx.arc(front.hx, front.hy, 2.8, 0, Math.PI * 2); ctx.fill();
+  const wAng = front.ang + Math.PI - 0.35;
+  if (look.style === 'caster') {
+    const tx = front.hx + Math.sin(wAng) * -10, ty = front.hy + Math.cos(wAng) * -10;
+    limb(front.hx - Math.sin(wAng) * 30, front.hy - Math.cos(wAng) * 30, tx, ty, 3, '#8a6a3a', edge);
+    ctx.fillStyle = '#9fd3ff'; ctx.beginPath(); ctx.arc(front.hx - Math.sin(wAng) * 30, front.hy - Math.cos(wAng) * 30, 4 + p.casting * 3, 0, Math.PI * 2); ctx.fill();
+  } else {
+    // Katana (or greatsword): guard, curved blade, glint
+    const len = look.style === 'sword' ? 46 : 40;
+    const bx = front.hx + Math.sin(wAng) * len, byy = front.hy + Math.cos(wAng) * len;
+    ctx.strokeStyle = '#2a1a12'; ctx.lineWidth = 3.4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(front.hx - Math.sin(wAng) * 7, front.hy - Math.cos(wAng) * 7); ctx.lineTo(front.hx, front.hy); ctx.stroke();
+    ctx.fillStyle = look.trim; ctx.beginPath(); ctx.arc(front.hx, front.hy, 2.6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#e4e6f0'; ctx.lineWidth = look.style === 'sword' ? 4 : 2.4;
+    ctx.beginPath(); ctx.moveTo(front.hx, front.hy);
+    ctx.quadraticCurveTo((front.hx + bx) / 2 + Math.cos(wAng) * 4, (front.hy + byy) / 2 - Math.sin(wAng) * 4, bx, byy); ctx.stroke();
+    const glint = (Math.sin(p.t * 1.3) + 1) / 2;
+    ctx.fillStyle = `rgba(255,255,255,${0.4 + glint * 0.5})`;
+    ctx.beginPath(); ctx.arc(front.hx + (bx - front.hx) * (0.3 + glint * 0.5), front.hy + (byy - front.hy) * (0.3 + glint * 0.5), 1.6, 0, Math.PI * 2); ctx.fill();
+    if (p.attacking && Math.abs(p.swing) > 0.25) {
+      ctx.strokeStyle = `rgba(243,215,154,${0.45 * Math.abs(p.swing)})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(shX + 8, shY + 3, len + 12, -1.3, 0.5 + p.swing * 0.7); ctx.stroke();
+    }
+  }
+  // Warm rim light from the street lanterns on the leading edge
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = 'rgba(233,170,80,.18)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(shX + 11, shY + 2); ctx.lineTo(hipX + 11, hipY - 4); ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over';
   ctx.restore();
 }

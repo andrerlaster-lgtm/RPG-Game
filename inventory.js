@@ -6,21 +6,11 @@
 // Re-written for this game; icons are drawn here, no art copied.
 
 // ---------- Icons ----------
-const ICON_PATHS = {
-  flask: '<path d="M10 3h4v4l4 7a5 5 0 0 1-4.5 7h-3A5 5 0 0 1 6 14l4-7z" fill="{c}"/><path d="M9 3h6" stroke="#f1ead9" stroke-width="1.6"/><path d="M7.5 14h9" stroke="rgba(255,255,255,.45)" stroke-width="1.4"/>',
-  pouch: '<path d="M7 9h10l1.5 9a3 3 0 0 1-3 3.4h-7A3 3 0 0 1 5.5 18z" fill="{c}"/><path d="M8 9c1-3 7-3 8 0" stroke="{c}" stroke-width="2" fill="none"/><path d="M9 9l6 0" stroke="#5a4426" stroke-width="1.4"/>',
-  bomb: '<circle cx="11" cy="14" r="6.5" fill="{c}"/><path d="M15 9l2.5-2.5" stroke="#8a6a3a" stroke-width="2"/><circle cx="18.5" cy="5.5" r="1.6" fill="#ffd36b"/><circle cx="9" cy="12" r="1.6" fill="rgba(255,255,255,.4)"/>',
-  sword: '<path d="M18.5 3.5l2 2-11 11-2-2z" fill="{c}"/><path d="M6 15l3 3" stroke="#e9b65a" stroke-width="2.6"/><path d="M5.5 18.5l-2 2" stroke="#5a3b2b" stroke-width="2.6" stroke-linecap="round"/>',
-  daggers: '<path d="M8 3l2 2-4.5 9.5-1.5-1.5z" fill="{c}"/><path d="M16 3l-2 2 4.5 9.5 1.5-1.5z" fill="{c}"/><path d="M4 14l3 3M20 14l-3 3" stroke="#e9b65a" stroke-width="2.2"/><path d="M4.5 18.5l-1.5 1.5M19.5 18.5l1.5 1.5" stroke="#5a3b2b" stroke-width="2.2" stroke-linecap="round"/>',
-  armor: '<path d="M8 3l4 2 4-2 4 3-2 4v10H6V10L4 6z" fill="{c}"/><path d="M12 5v15" stroke="rgba(255,255,255,.25)" stroke-width="1.4"/><path d="M7 13h10" stroke="#e9b65a" stroke-width="1.4"/>',
-  necklace: '<path d="M5 4c0 8 3 11 7 11s7-3 7-11" stroke="#c9c3b2" stroke-width="1.6" fill="none"/><circle cx="12" cy="17" r="3.6" fill="{c}"/><circle cx="11" cy="16" r="1.1" fill="rgba(255,255,255,.6)"/>',
-  coin: '<circle cx="12" cy="12" r="8" fill="{c}"/><circle cx="12" cy="12" r="5.4" fill="none" stroke="#9b6a22" stroke-width="1.4"/><path d="M10.5 9.5h3M10.5 14.5h3M12 8v8" stroke="#9b6a22" stroke-width="1.4"/>'
-};
+// Item icons come from icons.js (design-system set, MIT), tinted with each item's colour.
 function itemIcon(name) {
   const item = ITEMS[name];
   if (!item) return '';
-  const svg = (ICON_PATHS[item.icon] || ICON_PATHS.pouch).replace(/\{c\}/g, item.color);
-  return `<svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
+  return `<span class="item-icon-wrap" style="color:${item.color}">${dsIcon(item.icon, 'item-icon')}</span>`;
 }
 
 // ---------- State ----------
@@ -48,7 +38,7 @@ function openInventory() {
   Object.assign(INV, { open: true, index: 0, actions: null, actionIndex: 0 });
   iui.root.hidden = false;
   document.getElementById('touch').hidden = true;
-  sfx(520, 0.08, 'triangle', 0.04, 260);
+  play('uiOpen'); play('belt', { vol: 0.5 });
   renderInventory();
 }
 function closeInventory() {
@@ -58,14 +48,14 @@ function closeInventory() {
   state.mode = 'field';
   document.getElementById('touch').hidden = !isTouch;
   hudCache = '';
-  sfx(420, 0.08, 'triangle', 0.04, -200);
+  play('uiClose');
 }
 
 function switchTab(delta) {
   INV.tab = (INV.tab + delta + ITEM_CATEGORIES.length) % ITEM_CATEGORIES.length;
   INV.index = 0;
   INV.actions = null;
-  sfx(760, 0.04, 'square', 0.025);
+  play('uiTick');
   renderInventory();
 }
 
@@ -84,7 +74,7 @@ function moveSelection(dx, dy) {
     const cols = gridColumns();
     INV.index = Math.max(0, Math.min(items.length - 1, INV.index + dx + dy * cols));
   }
-  sfx(660, 0.03, 'square', 0.02);
+  play('uiMove');
   renderInventory();
 }
 
@@ -97,8 +87,8 @@ function actionsFor(name) {
     else list.push({ label: 'Use', run: () => fieldUse(name) });
   } else {
     const slot = item.category;
-    if (m.equip[slot] === name) list.push({ label: 'Unequip', run: () => { m.equip[slot] = null; sfx(380, 0.1, 'triangle', 0.04); } });
-    else list.push({ label: 'Equip', run: () => { m.equip[slot] = name; sfx(880, 0.12, 'triangle', 0.05, 200); } });
+    if (m.equip[slot] === name) list.push({ label: 'Unequip', run: () => { m.equip[slot] = null; play('cloth'); } });
+    else list.push({ label: 'Equip', run: () => { m.equip[slot] = name; play('belt'); play(item.category === 'weapon' ? 'draw' : 'cloth', { delay: 0.08 }); } });
   }
   list.push({ label: 'Cancel', run: () => {} });
   return list;
@@ -113,7 +103,7 @@ function fieldUse(name) {
   if (fx.heal) m.hp = Math.min(m.maxHp, m.hp + fx.heal);
   if (fx.mp) m.mp = Math.min(m.maxMp, m.mp + fx.mp);
   state.items[name] -= 1;
-  sfx(700, 0.25, 'sine', 0.05, 500);
+  play('heal');
   toast(`${m.name} used ${name}.`, 1400);
 }
 
@@ -121,7 +111,7 @@ function confirmInventory() {
   const items = tabItems();
   if (INV.actions) {
     const action = INV.actions[INV.actionIndex];
-    if (action.disabled) { sfx(140, 0.08, 'square', 0.03); return; }
+    if (action.disabled) { play('uiError'); return; }
     action.run();
     INV.actions = null;
     const after = tabItems();
@@ -133,12 +123,12 @@ function confirmInventory() {
   if (!sel) return;
   INV.actions = actionsFor(sel.name);
   INV.actionIndex = 0;
-  sfx(1040, 0.04, 'square', 0.03);
+  play('uiConfirm', { vol: 0.7 });
   renderInventory();
 }
 
 function backInventory() {
-  if (INV.actions) { INV.actions = null; sfx(520, 0.04, 'square', 0.03); renderInventory(); return; }
+  if (INV.actions) { INV.actions = null; play('uiBack'); renderInventory(); return; }
   closeInventory();
 }
 
@@ -226,11 +216,14 @@ function renderInventory() {
     b.className = 'inv-tab' + (i === INV.tab ? ' is-active' : '');
     b.setAttribute('aria-pressed', String(i === INV.tab));
     const count = Object.entries(state.items).filter(([n, k]) => k > 0 && ITEMS[n] && ITEMS[n].category === c.id).length;
-    b.innerHTML = `${escapeHtml(c.label)}<small>${count}</small>`;
+    const hasNew = [...(state.newItems || [])].some((n) => ITEMS[n] && ITEMS[n].category === c.id);
+    b.innerHTML = `${escapeHtml(c.label)}<small>${count}</small>` + (hasNew ? '<span class="badge-dot" aria-label="new"></span>' : '');
     b.addEventListener('click', () => { INV.tab = i; INV.index = 0; INV.actions = null; renderInventory(); });
     iui.tabs.append(b);
   });
   const items = tabItems();
+  const viewing = items[INV.index];
+  const wasNew = viewing && state.newItems && state.newItems.has(viewing.name);
   iui.grid.innerHTML = '';
   items.forEach((it, i) => {
     const li = document.createElement('li');
@@ -238,10 +231,11 @@ function renderInventory() {
     b.type = 'button';
     b.className = 'inv-cell' + (i === INV.index ? ' is-selected' : '') + (isEquipped(it.name) ? ' is-equipped' : '');
     b.setAttribute('aria-label', it.name + (it.count > 1 ? `, ${it.count}` : '') + (isEquipped(it.name) ? ', equipped' : ''));
-    b.innerHTML = itemIcon(it.name) + (it.count > 1 ? `<span class="cell-count">${it.count}</span>` : '') + (isEquipped(it.name) ? '<span class="cell-eq">E</span>' : '');
+    b.innerHTML = itemIcon(it.name) + (it.count > 1 ? `<span class="cell-count">${it.count}</span>` : '') + (isEquipped(it.name) ? '<span class="cell-eq">E</span>' : '') +
+      (state.newItems && state.newItems.has(it.name) && i !== INV.index ? '<span class="cell-new">New</span>' : '');
     b.addEventListener('click', () => {
       if (INV.index === i && !INV.actions) { confirmInventory(); return; }
-      INV.index = i; INV.actions = null; sfx(660, 0.03, 'square', 0.02); renderInventory();
+      INV.index = i; INV.actions = null; play('uiMove'); renderInventory();
     });
     li.append(b);
     iui.grid.append(li);
@@ -253,6 +247,11 @@ function renderInventory() {
   }
   renderCharacter();
   renderInfo(items[INV.index]);
+  if (wasNew) {
+    // Seen it now (like Breath of the Wild): clear the badge after this render.
+    state.newItems.delete(viewing.name);
+    updateBagBadge();
+  }
 }
 
 iui.close.addEventListener('click', closeInventory);

@@ -49,6 +49,35 @@ The party is just ZAY for now. To add a character, edit `characters.js`: add an 
 
 Your end rating depends on how often you were spotted and how many guards you knocked out: **Ghost of the Lantern Quarter** (never spotted, no knockouts), **Shadow**, **Rogue**, or **Brawler**.
 
+## Options and HUD
+
+- **Options** (title screen or pause menu): sound volume, guard vision cones on/off, screen shake on/off, and battle speed (Slow / Normal / Fast). Settings are saved in this browser on this device.
+- **Restart level** asks for confirmation first.
+- **Bag badge:** a red number on the Bag button counts new items; tabs with new items get a dot, and new items show a "New" tag until you select them.
+- **Tooltips:** hover (or focus, or long-press on a phone) the HP, gold, cards, visibility, Bag and Pause items in the HUD.
+
+## Sound and music
+
+- **Recorded effects** from Kenney's [RPG Audio](https://kenney.nl/assets/rpg-audio), [Interface Sounds](https://kenney.nl/assets/interface-sounds) and [Music Jingles](https://kenney.nl/assets/music-jingles) packs (CC0, free to use, no credit required): footsteps, coins, knife draws and slices, thuds, cloth, latches and creaks, menu clicks, and jingles for victory, level up, job complete, getting spotted and getting caught. They live in `audio/` as AAC (`.m4a`) so they play on iPhone too.
+- **Generated effects** in the style of Bfxr/jfxr (noise, filters, envelopes): swishes, card flicks, hedge rustles, Fire, Ice, healing, the Smoke Bomb, the battle swirl.
+- **Generated music:** a quiet night soundscape in the streets (river hum + a far-off Lantern Quarter band) and a driving battle theme. Options has separate Sound effects and Music sliders.
+
+To swap a sound, replace the matching file in `audio/` (same name) or change the name in `audio.js`.
+
+## Editing the level in Tiled
+
+The map is `levels/paper-thief.tmj`, a [Tiled](https://www.mapeditor.org/) map (Tiled is installed in Applications). Open it in Tiled, edit, save, and reload the game.
+
+- **ground** (tile layer): building, street, garden, hedge (hides ZAY), floor, river, dock. Paint with the `bellemorne-tiles` tileset.
+- **objects** (object layer). Set each object's **Class** to one of:
+  - `start` — where ZAY begins
+  - `lamp` — a street lamp (optional `radius`, default 128)
+  - `chest` — property `item` (any item name from `characters.js`)
+  - `coin` — property `gold`; `cards` — property `count`
+  - `ledger`, `kid`, `boat` — the objective, the Soot kid, the escape boat
+  - `vault` — draw a 2-point line across a 1-tile wall where ZAY can tail-vault
+  - `guard` — draw a polyline for the patrol route; property `kind` = `guard` or `captain`
+
 ## Borrowed from Godot
 
 Techniques from the [Godot Engine](https://github.com/godotengine/godot) (MIT), re-written in this game's JavaScript:
@@ -59,6 +88,8 @@ Techniques from the [Godot Engine](https://github.com/godotengine/godot) (MIT), 
 - **InputMap:** controller buttons feed the same actions as the keyboard, with a different mapping in battles.
 
 The bag, item database, equipment slots, item pickups and level/EXP panel follow the design of [GodotDynamicInventorySystem](https://github.com/alfredbaudisch/GodotDynamicInventorySystem) by Alfred Baudisch (Apache 2.0). Its ideas were re-written here; none of its code, art or sounds were copied.
+
+The styling follows the structure of [unity-ui-toolkit-design-system](https://github.com/sinanata/unity-ui-toolkit-design-system) by Sinan Ata (MIT): one layer of design tokens in `style.css`, components that only use tokens, and hover / press / disabled / focus states on every control. Its icons (potion, bomb, sword, shield, gem, coin, bag, settings and others) are used in `icons.js` under the MIT licence; see `THIRD_PARTY_NOTICES.md`.
 
 ## Run it
 
@@ -74,6 +105,11 @@ Then open <http://localhost:5192>.
 
 - `index.html` — screens, HUD, touch controls
 - `style.css` — HUD and screen styling
+- `icons.js` — design-system icons (MIT), tintable with CSS colour
+- `audio.js` — sound effects, generated music, volume buses
+- `audio/` — Kenney CC0 sounds (AAC)
+- `levels/` — the Tiled map, tileset and tileset image
+- `ui.js` — settings and Options, confirm dialog, HUD tooltips, new-item badge
 - `characters.js` — classes, party, spells, item database, equipment, levels, enemies
 - `game.js` — map, lighting, guards, stealth, and the switch into battles
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)

@@ -46,30 +46,30 @@ const EQUIP_SLOTS = [
 
 const STAT_LABELS = { atk: 'ATK', def: 'DEF', mag: 'MAG', spd: 'SPD' };
 
-// icon: flask, pouch, bomb, sword, daggers, armor, necklace, coin
+// icon: a name from icons.js (potion, heart, bomb, sword, swords, shirt, shield, gem, coin)
 const ITEMS = {
   'Potion': {
-    category: 'consumable', icon: 'flask', color: '#e2574c', price: 50, target: 'party',
+    category: 'consumable', icon: 'potion', color: '#e2574c', price: 50, target: 'party',
     effect: { heal: 60 }, effectText: 'Restores 60 HP',
     desc: 'A red tonic from a Lantern Quarter apothecary. Tastes like cinnamon and regret.'
   },
   'Hi-Potion': {
-    category: 'consumable', icon: 'flask', color: '#ff9a3c', price: 180, target: 'party',
+    category: 'consumable', icon: 'potion', color: '#ff9a3c', price: 180, target: 'party',
     effect: { heal: 150 }, effectText: 'Restores 150 HP',
     desc: 'The good stuff, the kind the Crown Quarter keeps for itself.'
   },
   'Ether': {
-    category: 'consumable', icon: 'flask', color: '#6fb7ff', price: 220, target: 'party',
+    category: 'consumable', icon: 'potion', color: '#6fb7ff', price: 220, target: 'party',
     effect: { mp: 25 }, effectText: 'Restores 25 MP',
     desc: 'Blue and faintly humming. Spellcasters pay well for it.'
   },
   'Smelling Salts': {
-    category: 'consumable', icon: 'pouch', color: '#e9e2a0', price: 120, target: 'party',
+    category: 'consumable', icon: 'heart', color: '#f08a9a', price: 120, target: 'party',
     effect: { revive: 0.3 }, effectText: 'Revives a fallen ally with 30% HP',
     desc: "Noe's father taught her what to keep behind the bar."
   },
   'Smoke Bomb': {
-    category: 'consumable', icon: 'bomb', color: '#9aa0b8', price: 90, target: 'none', battleOnly: true,
+    category: 'consumable', icon: 'bomb', color: '#b9bed2', price: 90, target: 'none', battleOnly: true,
     effect: { escape: true }, effectText: 'Escape any battle',
     desc: 'A guild trick. A pop, a cloud, and nobody remembers your face.'
   },
@@ -79,26 +79,26 @@ const ITEMS = {
     desc: 'Taken during the castle job. The blade Severin carried for centuries.'
   },
   'Twin Daggers': {
-    category: 'weapon', icon: 'daggers', color: '#c9c9d6', price: 0, stats: { atk: 7, spd: 3 }, bonus: { steal: 0.1 },
+    category: 'weapon', icon: 'swords', color: '#c9c9d6', price: 0, stats: { atk: 7, spd: 3 }, bonus: { steal: 0.1 },
     trait: 'Steal +10%',
     desc: 'One from Rika, one from Kairo. Light, quick, and heavy in other ways.'
   },
   'Veyrane Baton': {
-    category: 'weapon', icon: 'sword', color: '#8a6a3a', price: 60, stats: { atk: 8 },
+    category: 'weapon', icon: 'sword', color: '#c09060', price: 60, stats: { atk: 8 },
     desc: "A guard's lead-weighted baton. Crude, but it doesn't care."
   },
   'Rogue Blacks': {
-    category: 'armor', icon: 'armor', color: '#3a3a48', price: 0, stats: { def: 4, spd: 1 },
+    category: 'armor', icon: 'shirt', color: '#9a9ab4', price: 0, stats: { def: 4, spd: 1 },
     trait: 'Quiet',
     desc: 'Fitted black layers. Nothing shiny. Nothing that catches light.'
   },
   'Veyrane Brigandine': {
-    category: 'armor', icon: 'armor', color: '#3d2a4f', price: 400, stats: { def: 11, spd: -2 },
+    category: 'armor', icon: 'shield', color: '#b08ad0', price: 400, stats: { def: 11, spd: -2 },
     trait: 'Heavy',
     desc: "An estate captain's armor. Sturdy, loud, and slow."
   },
   "Mother's Necklace": {
-    category: 'charm', icon: 'necklace', color: '#e9b65a', price: 0, stats: { def: 2, mag: 2 },
+    category: 'charm', icon: 'gem', color: '#e9b65a', price: 0, stats: { def: 2, mag: 2 },
     trait: 'Cannot be sold',
     desc: 'A simple necklace from his mother, worn close to the chest.'
   },

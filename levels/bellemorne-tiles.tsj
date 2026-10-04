@@ -1,0 +1,94 @@
+{
+ "name": "bellemorne",
+ "type": "tileset",
+ "version": "1.10",
+ "tiledversion": "1.12.2",
+ "tilewidth": 32,
+ "tileheight": 32,
+ "tilecount": 7,
+ "columns": 7,
+ "margin": 0,
+ "spacing": 0,
+ "image": "bellemorne-tiles.png",
+ "imagewidth": 224,
+ "imageheight": 32,
+ "tiles": [
+  {
+   "id": 0,
+   "type": "building",
+   "properties": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "#"
+    }
+   ]
+  },
+  {
+   "id": 1,
+   "type": "street",
+   "properties": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "."
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "garden",
+   "properties": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "g"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "type": "hedge",
+   "properties": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "h"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "type": "floor",
+   "properties": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "f"
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "type": "river",
+   "properties": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "w"
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "type": "dock",
+   "properties": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "d"
+    }
+   ]
+  }
+ ]
+}
