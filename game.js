@@ -180,15 +180,21 @@ function newState() {
     running: false,
     paused: false,
     over: false,
+    mode: 'field',
+    party: makeParty(),
+    items: { Potion: 2 },
+    battles: 0,
+    stolen: [],
     time: 0,
     player: {
       x: 4 * TILE + 16, y: 38 * TILE + 16, r: 10, dir: -Math.PI / 2,
-      hp: 3, gold: 0, given: 0, cards: 5, invuln: 0, dashT: 0, dashCd: 0, slashCd: 0, slashT: 0,
+      gold: 0, given: 0, cards: 5, invuln: 0, dashT: 0, dashCd: 0, slashCd: 0, slashT: 0,
       noiseT: 0, lit: false, hidden: false, moving: false, sprint: false, hasLedger: false, step: 0
     },
-    guards: GUARD_ROUTES.map((route) => {
+    guards: GUARD_ROUTES.map((route, i) => {
       const pts = route.map(([x, y]) => centre(x, y));
       return {
+        kind: i === 4 || i === 6 ? 'captain' : 'guard',
         x: pts[0].x, y: pts[0].y, r: 11, dir: 0, route: pts, ri: 1 % pts.length,
         state: 'patrol', meter: 0, hp: 3, path: [], pathT: 0, pathGoal: null, target: null,
         lostT: 0, lookT: 0, attackCd: 0, windup: 0, stunT: 0, seenBodies: new Set(), speed: 52
@@ -209,7 +215,6 @@ state = newState();
 const keys = new Set();
 const pressed = new Set();
 const mouse = { x: 0, y: 0, wx: 0, wy: 0, has: false };
-const touch = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
 window.addEventListener('keydown', (e) => {
@@ -217,48 +222,33 @@ window.addEventListener('keydown', (e) => {
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
-  if ((k === 'escape' || k === 'p') && state.running && !state.over) togglePause();
+  if ((k === 'p' || (k === 'escape' && state.mode !== 'battle')) && state.running && !state.over) togglePause();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => { keys.clear(); if (state.running && !state.over && !state.paused) togglePause(); });
 canvas.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true; });
 canvas.addEventListener('mousedown', (e) => {
-  if (e.button === 0) pressed.add('mouse-slash');
   if (e.button === 2) pressed.add('mouse-card');
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-const stick = document.getElementById('stick');
-const knob = document.getElementById('stick-knob');
-document.addEventListener('touchstart', (e) => {
-  for (const t of e.changedTouches) {
-    if (touch.id === null && t.clientX < vw * 0.5 && state.running) {
-      touch.id = t.identifier; touch.ox = t.clientX; touch.oy = t.clientY; touch.dx = 0; touch.dy = 0; touch.active = true;
-      const rect = stick.getBoundingClientRect();
-      touch.ox = rect.left + rect.width / 2; touch.oy = rect.top + rect.height / 2;
-    }
-  }
-}, { passive: true });
-document.addEventListener('touchmove', (e) => {
-  for (const t of e.changedTouches) {
-    if (t.identifier !== touch.id) continue;
-    let dx = t.clientX - touch.ox, dy = t.clientY - touch.oy;
-    const d = Math.hypot(dx, dy), max = 50;
-    if (d > max) { dx = dx / d * max; dy = dy / d * max; }
-    touch.dx = dx / max; touch.dy = dy / max;
-    knob.style.transform = `translate(${dx}px, ${dy}px)`;
-  }
-}, { passive: true });
-const endTouch = (e) => {
-  for (const t of e.changedTouches) if (t.identifier === touch.id) {
-    touch.id = null; touch.active = false; touch.dx = 0; touch.dy = 0; knob.style.transform = '';
-  }
-};
-document.addEventListener('touchend', endTouch);
-document.addEventListener('touchcancel', endTouch);
 document.querySelectorAll('[data-act]').forEach((b) => {
-  b.addEventListener('touchstart', (e) => { e.preventDefault(); pressed.add('touch-' + b.dataset.act); }, { passive: false });
-  b.addEventListener('click', () => pressed.add('touch-' + b.dataset.act));
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); pressed.add('touch-' + b.dataset.act); });
+});
+// Arrow pad and Sprint: held buttons behave like held keys.
+document.querySelectorAll('[data-key], [data-hold]').forEach((b) => {
+  const key = b.dataset.key || b.dataset.hold;
+  const release = () => { keys.delete(key); b.classList.remove('is-held'); };
+  b.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    try { b.setPointerCapture(e.pointerId); } catch { /* keep working without capture */ }
+    if (!keys.has(key)) pressed.add(key);
+    keys.add(key);
+    b.classList.add('is-held');
+  });
+  b.addEventListener('pointerup', release);
+  b.addEventListener('pointercancel', release);
+  b.addEventListener('lostpointercapture', release);
 });
 
 // ---------- Audio ----------
@@ -355,21 +345,20 @@ function noise(x, y, radius) {
 function updatePlayer(dt) {
   const p = state.player;
   let mx = 0, my = 0;
-  if (keys.has('w') || keys.has('arrowup')) my -= 1;
-  if (keys.has('s') || keys.has('arrowdown')) my += 1;
-  if (keys.has('a') || keys.has('arrowleft')) mx -= 1;
-  if (keys.has('d') || keys.has('arrowright')) mx += 1;
-  if (touch.active) { mx = touch.dx; my = touch.dy; }
+  if (keys.has('arrowup')) my -= 1;
+  if (keys.has('arrowdown')) my += 1;
+  if (keys.has('arrowleft')) mx -= 1;
+  if (keys.has('arrowright')) mx += 1;
   const mag = Math.hypot(mx, my);
   p.moving = mag > 0.15;
   if (mag > 1) { mx /= mag; my /= mag; }
   if (p.moving) p.dir = Math.atan2(my, mx);
   if (!isTouch && mouse.has && !p.moving) {
-    // Face the cursor when standing still so card throws and swings aim naturally.
+    // Face the cursor when standing still so card throws aim naturally.
     p.dir = Math.atan2(mouse.wy - p.y, mouse.wx - p.x);
   }
 
-  p.sprint = keys.has('shift') || (touch.active && Math.hypot(touch.dx, touch.dy) > 0.95);
+  p.sprint = keys.has('shift');
   const inHedge = tileAt(p.x, p.y) === 'h';
   let speed = p.sprint ? 185 : 118;
   if (inHedge) speed *= 0.6;
@@ -399,7 +388,6 @@ function updatePlayer(dt) {
 
   // Actions
   if (pressed.has('e') || pressed.has('touch-use')) use();
-  if ((pressed.has('j') || pressed.has('mouse-slash') || pressed.has('touch-slash')) && p.slashCd <= 0) slash();
   if (pressed.has('q') || pressed.has('mouse-card') || pressed.has('touch-card')) throwCard(pressed.has('mouse-card') || (pressed.has('q') && mouse.has));
 
   // Pickups
@@ -476,30 +464,6 @@ function knockOut(g, silent) {
   sfx(silent ? 140 : 110, 0.15, 'triangle', 0.07, -60);
   if (!silent) noise(g.x, g.y, 120);
   else noise(g.x, g.y, 50);
-}
-
-function slash() {
-  const p = state.player;
-  p.slashCd = 0.35;
-  p.slashT = 0.16;
-  sfx(900, 0.09, 'sawtooth', 0.03, -700);
-  let hit = false;
-  for (const g of state.guards) {
-    if (g.state === 'down') continue;
-    const d = dist(g, p);
-    const a = Math.atan2(g.y - p.y, g.x - p.x);
-    if (d < 52 && Math.abs(angDiff(p.dir, a)) < 1.1) {
-      hit = true;
-      if (g.state !== 'alert' && behind(g, p)) { knockOut(g, true); continue; }
-      g.hp -= 1;
-      move(g, Math.cos(a) * 16, Math.sin(a) * 16);
-      g.stunT = 0.25;
-      if (g.state !== 'alert') raiseAlarm(g);
-      if (g.hp <= 0) knockOut(g, false);
-      else sfx(200, 0.08, 'square', 0.05);
-    }
-  }
-  noise(p.x, p.y, hit ? 130 : 80);
 }
 
 function throwCard(aimAtMouse) {
@@ -656,7 +620,7 @@ function updateGuard(g, dt) {
       break;
     }
     case 'alert': {
-      if (sees) { g.lostT = 0; g.target = { x: p.x, y: p.y }; }
+      if (sees || !g.target) { g.lostT = 0; g.target = { x: p.x, y: p.y }; }
       else {
         g.lostT += dt;
         if (g.lostT > 3.2) {
@@ -664,34 +628,14 @@ function updateGuard(g, dt) {
           break;
         }
       }
-      const d = dist(g, p);
-      if (g.windup > 0) {
-        g.windup -= dt;
-        turnTo(g, Math.atan2(p.y - g.y, p.x - g.x), dt, 4);
-        if (g.windup <= 0) {
-          g.attackCd = 1.35;
-          effect('swing', g.x, g.y, { dir: g.dir });
-          if (dist(g, p) < 40 && p.invuln <= 0) hurtPlayer(g);
-        }
-      } else if (d < 32 && g.attackCd <= 0) {
-        g.windup = 0.38;
-      } else {
-        walkTo(g, g.target, 128, dt);
+      if (dist(g, p) < 30 && p.invuln <= 0 && state.mode === 'field') {
+        startBattle(g);
+        return;
       }
+      walkTo(g, g.target, 128, dt);
       break;
     }
   }
-}
-
-function hurtPlayer(g) {
-  const p = state.player;
-  p.hp -= 1;
-  p.invuln = 1.0;
-  const a = Math.atan2(p.y - g.y, p.x - g.x);
-  move(p, Math.cos(a) * 24, Math.sin(a) * 24);
-  sfx(120, 0.25, 'sawtooth', 0.07, -60);
-  effect('hurt', p.x, p.y);
-  if (p.hp <= 0) finish(false);
 }
 
 // ---------- Rendering ----------
@@ -987,7 +931,7 @@ function drawObjectiveArrow() {
 
 // ---------- HUD ----------
 const hudEls = {
-  hud: document.getElementById('hud'), hearts: document.getElementById('hearts'), gold: document.getElementById('gold'),
+  hud: document.getElementById('hud'), hpFill: document.getElementById('hp-fill'), hpText: document.getElementById('hp-text'), gold: document.getElementById('gold'),
   cards: document.getElementById('cards'), vis: document.getElementById('vis'), objective: document.getElementById('objective')
 };
 let hudCache = '';
@@ -996,10 +940,12 @@ function updateHud() {
   const vis = p.hidden ? 'Hidden' : p.lit ? 'In the light' : 'Shadow';
   const objective = !state.ledgerTaken ? "Steal the ledger from House Veyrane's counting house"
     : KID.helped ? 'Reach the river boat' : 'Reach the river boat · give your coin to the kid on the dock';
-  const key = [p.hp, p.gold, p.cards, vis, objective].join('|');
+  const lead = state.party[0];
+  const key = [lead.hp, p.gold, p.cards, vis, objective].join('|');
   if (key === hudCache) return;
   hudCache = key;
-  hudEls.hearts.innerHTML = [0, 1, 2].map((i) => `<span class="heart${i < p.hp ? '' : ' empty'}"></span>`).join('');
+  hudEls.hpFill.style.transform = `scaleX(${lead.hp / lead.maxHp})`;
+  hudEls.hpText.textContent = `${lead.hp}/${lead.maxHp}`;
   hudEls.gold.textContent = p.gold;
   hudEls.cards.textContent = p.cards;
   hudEls.vis.textContent = vis;
@@ -1029,6 +975,8 @@ function finish(won) {
   const stats = [
     ['Time', `${mins}:${secs}`],
     ['Times spotted', state.alarms],
+    ['Battles', state.battles],
+    ['Stolen in battle', state.stolen.length ? state.stolen.join(', ') : 'nothing'],
     ['Guards knocked out', state.kos],
     ['Casualties', '0 · the code held'],
     ['Gold given away', p.given],
@@ -1049,9 +997,12 @@ function start() {
   document.getElementById('title').hidden = true;
   document.getElementById('end').hidden = true;
   document.getElementById('pause').hidden = true;
+  document.getElementById('battle-ui').hidden = true;
+  B.active = false;
   hudEls.hud.hidden = false;
   document.getElementById('touch').hidden = !isTouch;
   toast('The Soot Quarter. Veyrane’s estate is north-east, past the lanterns.', 3000);
+  updateHud();
 }
 function togglePause() {
   state.paused = !state.paused;
@@ -1065,20 +1016,26 @@ document.getElementById('pause-btn').addEventListener('click', () => { if (state
 
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
   if (state.running && !state.paused) {
     state.time += dt;
-    updatePlayer(dt);
-    updateProjectiles(dt);
-    for (const g of state.guards) updateGuard(g, dt);
-    for (const e of state.effects) e.t += dt;
-    state.effects = state.effects.filter((e) => e.t < 0.7);
-    updateHud();
+    if (state.mode === 'battle') updateBattle(dt);
+    else {
+      updatePlayer(dt);
+      updateProjectiles(dt);
+      for (const g of state.guards) updateGuard(g, dt);
+      for (const e of state.effects) e.t += dt;
+      state.effects = state.effects.filter((e) => e.t < 0.7);
+      updateHud();
+    }
   }
   pressed.clear();
-  updateCamera();
-  render();
+  if (state.mode === 'battle') renderBattle();
+  else {
+    updateCamera();
+    render();
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

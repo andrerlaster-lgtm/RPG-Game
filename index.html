@@ -9,14 +9,16 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Barlow:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="style.css">
+  <script src="characters.js" defer></script>
   <script src="game.js" defer></script>
+  <script src="battle.js" defer></script>
 </head>
 <body>
   <canvas id="game" aria-label="Game view"></canvas>
 
   <div id="hud" hidden>
     <div class="hud-row">
-      <div id="hearts" class="hearts" aria-label="Health"></div>
+      <div class="hp-meter" aria-label="Health"><span class="hp-label">ZAY</span><span class="hp-bar"><i id="hp-fill"></i></span><span id="hp-text" class="hp-text">140/140</span></div>
       <div class="stat"><span class="stat-icon coin" aria-hidden="true"></span><span id="gold">0</span></div>
       <div class="stat"><span class="stat-icon card" aria-hidden="true"></span><span id="cards">5</span></div>
       <div id="vis" class="vis">Shadow</div>
@@ -27,11 +29,16 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <div id="touch" class="touch" hidden>
-    <div id="stick" class="stick"><div id="stick-knob" class="stick-knob"></div></div>
+    <div class="dpad" aria-label="Move">
+      <button type="button" class="dpad-btn up" data-key="arrowup" aria-label="Up"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
+      <button type="button" class="dpad-btn left" data-key="arrowleft" aria-label="Left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button type="button" class="dpad-btn right" data-key="arrowright" aria-label="Right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      <button type="button" class="dpad-btn down" data-key="arrowdown" aria-label="Down"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
     <div class="touch-buttons">
       <button type="button" data-act="use" class="tbtn use">Use</button>
       <button type="button" data-act="card" class="tbtn card">Card</button>
-      <button type="button" data-act="slash" class="tbtn slash">Blade</button>
+      <button type="button" data-hold="shift" class="tbtn sprint">Sprint</button>
       <button type="button" data-act="dash" class="tbtn dash">Roll</button>
     </div>
   </div>
@@ -42,24 +49,41 @@
       <h1>Paper Thief</h1>
       <p class="lede">House Veyrane steals with paper. Tonight, ZAY steals it back.</p>
       <p>Somewhere in the Veyrane counting house sits the contract choking The Crooked Halo. Slip into the estate, take the ledger, and get to the river boat.</p>
-      <p>Stay out of the lantern light. The guild's code still holds: <strong>no casualties</strong>. Guards only get knocked out.</p>
+      <p>Stay out of the lantern light. If a guard catches you, it's a fight: <strong>Hit</strong> or <strong>Steal</strong> when ZAY's gauge fills. The guild's code still holds: <strong>no casualties</strong>. Guards only get knocked out.</p>
       <div class="controls">
         <div><h2>Keyboard</h2>
           <ul>
-            <li><kbd>WASD</kbd> move · <kbd>Shift</kbd> sprint (noisy)</li>
+            <li><kbd>Arrow keys</kbd> move · <kbd>Shift</kbd> sprint (noisy)</li>
             <li><kbd>E</kbd> takedown from behind, vault, grab, give</li>
             <li><kbd>Q</kbd> / right-click throw a card to distract</li>
-            <li><kbd>J</kbd> / click katana · <kbd>Space</kbd> roll</li>
+            <li><kbd>Space</kbd> roll</li>
+            <li>Battle: <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> confirm · <kbd>Esc</kbd> back</li>
           </ul>
         </div>
         <div><h2>Touch</h2>
           <ul>
-            <li>Left thumb: move</li>
-            <li>Use · Card · Blade · Roll buttons</li>
+            <li>Arrow pad: move</li>
+            <li>Use · Card · Sprint · Roll buttons</li>
+            <li>Battle: tap a command, then a target</li>
           </ul>
         </div>
       </div>
       <button type="button" id="start" class="primary">Begin the job</button>
+    </div>
+  </section>
+
+  <section id="battle-ui" class="battle-ui" hidden>
+    <div id="battle-msg" class="ff-window battle-msg" hidden></div>
+    <div class="ff-window enemy-win"><ul id="enemy-list" class="ff-list"></ul></div>
+    <div class="ff-window party-win"><ul id="party-list" class="ff-list"></ul></div>
+    <div id="command-win" class="ff-window command-win" hidden>
+      <p id="command-title" class="command-title"></p>
+      <ul id="command-list" class="ff-list"></ul>
+    </div>
+    <div id="battle-result" class="ff-window battle-result" hidden>
+      <h2 id="result-title"></h2>
+      <p id="result-text"></p>
+      <button type="button" id="result-continue" class="primary">Continue</button>
     </div>
   </section>
 
