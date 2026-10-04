@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#07080f">
+  <title>Bellemorne — Paper Thief</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Barlow:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script src="game.js" defer></script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <div id="hud" hidden>
+    <div class="hud-row">
+      <div id="hearts" class="hearts" aria-label="Health"></div>
+      <div class="stat"><span class="stat-icon coin" aria-hidden="true"></span><span id="gold">0</span></div>
+      <div class="stat"><span class="stat-icon card" aria-hidden="true"></span><span id="cards">5</span></div>
+      <div id="vis" class="vis">Shadow</div>
+      <button type="button" id="pause-btn" class="pause-btn" aria-label="Pause">II</button>
+    </div>
+    <p id="objective" class="objective"></p>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <div id="touch" class="touch" hidden>
+    <div id="stick" class="stick"><div id="stick-knob" class="stick-knob"></div></div>
+    <div class="touch-buttons">
+      <button type="button" data-act="use" class="tbtn use">Use</button>
+      <button type="button" data-act="card" class="tbtn card">Card</button>
+      <button type="button" data-act="slash" class="tbtn slash">Blade</button>
+      <button type="button" data-act="dash" class="tbtn dash">Roll</button>
+    </div>
+  </div>
+
+  <section id="title" class="screen">
+    <div class="panel">
+      <p class="kicker">Bellemorne · Night One</p>
+      <h1>Paper Thief</h1>
+      <p class="lede">House Veyrane steals with paper. Tonight, ZAY steals it back.</p>
+      <p>Somewhere in the Veyrane counting house sits the contract choking The Crooked Halo. Slip into the estate, take the ledger, and get to the river boat.</p>
+      <p>Stay out of the lantern light. The guild's code still holds: <strong>no casualties</strong>. Guards only get knocked out.</p>
+      <div class="controls">
+        <div><h2>Keyboard</h2>
+          <ul>
+            <li><kbd>WASD</kbd> move · <kbd>Shift</kbd> sprint (noisy)</li>
+            <li><kbd>E</kbd> takedown from behind, vault, grab, give</li>
+            <li><kbd>Q</kbd> / right-click throw a card to distract</li>
+            <li><kbd>J</kbd> / click katana · <kbd>Space</kbd> roll</li>
+          </ul>
+        </div>
+        <div><h2>Touch</h2>
+          <ul>
+            <li>Left thumb: move</li>
+            <li>Use · Card · Blade · Roll buttons</li>
+          </ul>
+        </div>
+      </div>
+      <button type="button" id="start" class="primary">Begin the job</button>
+    </div>
+  </section>
+
+  <section id="pause" class="screen" hidden>
+    <div class="panel small">
+      <h1>Paused</h1>
+      <button type="button" id="resume" class="primary">Resume</button>
+      <button type="button" id="restart-pause" class="secondary">Restart level</button>
+    </div>
+  </section>
+
+  <section id="end" class="screen" hidden>
+    <div class="panel">
+      <p id="end-kicker" class="kicker"></p>
+      <h1 id="end-title"></h1>
+      <p id="end-text" class="lede"></p>
+      <dl id="end-stats" class="end-stats"></dl>
+      <button type="button" id="again" class="primary">Run it again</button>
+    </div>
+  </section>
+</body>
+</html>
