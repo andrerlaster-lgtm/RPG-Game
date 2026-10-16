@@ -101,6 +101,8 @@ python3 -m http.server 5192 --directory "/Users/andrelaster/app ideas/bellemorne
 
 Then open <http://localhost:5192>.
 
+In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.1 --directory /workspace/RPG-Game`. No dependency installation or build step is needed. Local startup, movement, inventory, and pause/resume were checked in Chromium.
+
 ## Files
 
 - `index.html` — screens, HUD, touch controls
