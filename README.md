@@ -126,3 +126,7 @@ vercel alias set <new-deployment-url> bellemorne-rogue-game-preview-andrerlaster
 ```
 
 The project's very first deploy (2026-10-03) went to production by Vercel's default for new projects. Its public aliases (`bellemorne-rogue-game.vercel.app` and the team alias) were removed right away, so only the login-protected preview is in use.
+
+## Deploying
+
+Pushing to `main` on `andrerlaster-lgtm/RPG-Game` deploys this game to the `bellemorne-rogue-game` Vercel project. The project is login-protected for every deployment (Vercel Authentication: all), so the game is not public. Check the result in the LasterLab studio under Deploy Check.
