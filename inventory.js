@@ -240,7 +240,7 @@ function renderInventory() {
     li.append(b);
     iui.grid.append(li);
   });
-  for (let i = items.length; i < Math.max(12, Math.ceil(items.length / 4) * 4); i++) {
+  for (let i = items.length; i < Math.max(8, Math.ceil(items.length / 4) * 4); i++) {
     const li = document.createElement('li');
     li.innerHTML = '<span class="inv-cell is-empty"></span>';
     iui.grid.append(li);

@@ -87,8 +87,8 @@
   <section id="battle-ui" class="battle-ui" hidden>
     <div id="battle-help" class="ff-window battle-help" hidden></div>
     <div id="battle-msg" class="ff-window battle-msg" hidden></div>
-    <div class="ff-window enemy-win"><ul id="enemy-list" class="ff-list"></ul></div>
-    <div class="ff-window party-win"><ul id="party-list" class="ff-list"></ul></div>
+    <div class="ff-window enemy-win"><h2 class="window-label">Opposition</h2><ul id="enemy-list" class="ff-list"></ul></div>
+    <div class="ff-window party-win"><h2 class="window-label">Your party</h2><ul id="party-list" class="ff-list"></ul></div>
     <div id="command-win" class="ff-window command-win" hidden>
       <p id="command-title" class="command-title"></p>
       <ul id="command-list" class="ff-list"></ul>
@@ -103,14 +103,15 @@
 
   <section id="inventory" class="inventory" hidden aria-label="Bag">
     <div class="inv-panel">
+      <div class="inv-heading"><div><p class="eyebrow">Ready for the next move</p><h2>Your bag</h2></div><span class="inv-heading-note">Gear up. Keep moving.</span></div>
       <header class="inv-head">
-        <div id="inv-tabs" class="inv-tabs" role="tablist"></div>
+        <div id="inv-tabs" class="inv-tabs" aria-label="Item categories"></div>
         <div class="inv-gold"><span class="stat-icon" data-icon="coin"></span><span id="inv-gold">0</span></div>
         <button type="button" id="inv-close" class="inv-close" aria-label="Close bag"><span data-icon="close"></span></button>
       </header>
       <div class="inv-body">
         <section id="inv-char" class="inv-char" aria-label="Character"></section>
-        <ul id="inv-grid" class="inv-grid" aria-label="Items"></ul>
+        <section class="inv-items" aria-label="Items"><h3 class="window-label">In your bag</h3><ul id="inv-grid" class="inv-grid" aria-label="Items"></ul></section>
         <section id="inv-info" class="inv-info" aria-live="polite"></section>
       </div>
       <p class="inv-keys">← → ↑ ↓ choose · Enter actions · Q / E switch tabs · Esc close</p>
