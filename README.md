@@ -56,6 +56,8 @@ Your end rating depends on how often you were spotted and how many guards you kn
 - **Bag badge:** a red number on the Bag button counts new items; tabs with new items get a dot, and new items show a "New" tag until you select them.
 - **Tooltips:** hover (or focus, or long-press on a phone) the HP, gold, cards, visibility, Bag and Pause items in the HUD.
 
+The bag uses larger item slots and separate character and item details, with a scrollable layout on smaller screens. Battle commands, opponents and party status have separate panels so target selection stays visible.
+
 ## Sound and music
 
 - **Recorded effects** from Kenney's [RPG Audio](https://kenney.nl/assets/rpg-audio), [Interface Sounds](https://kenney.nl/assets/interface-sounds) and [Music Jingles](https://kenney.nl/assets/music-jingles) packs (CC0, free to use, no credit required): footsteps, coins, knife draws and slices, thuds, cloth, latches and creaks, menu clicks, and jingles for victory, level up, job complete, getting spotted and getting caught. They live in `audio/` as AAC (`.m4a`) so they play on iPhone too.
