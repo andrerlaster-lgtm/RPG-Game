@@ -76,12 +76,14 @@ const ITEMS = {
   "Severin's Katana": {
     category: 'weapon', icon: 'sword', color: '#d4d4e0', price: 0, stats: { atk: 11 },
     trait: 'Cannot be sold',
-    desc: 'Taken during the castle job. The blade Severin carried for centuries.'
+    desc: 'Taken during the castle job. The blade Severin carried for centuries; the etching along it catches blue and silver.',
+    svg: '<svg viewBox="0 0 24 24" class="item-icon" aria-hidden="true"><path d="M4.5 20.5c4-5 9.5-11 15.5-16.5l-.6 2.3C14 11.9 9 17 5.7 21.3z" fill="#dfe3ee"/><path d="M8 17.2c3-3.6 6.5-7.4 10.2-10.8" stroke="#8fb4d8" stroke-width=".6" fill="none" stroke-dasharray="1.4 .9"/><circle cx="5.6" cy="19.4" r="2" fill="none" stroke="#9a8250" stroke-width="1.3"/><path d="M2 23.2l2.9-2.9" stroke="#1d1a20" stroke-width="2.6" stroke-linecap="round"/><path d="M2.6 22.6l.6-.6M3.6 21.6l.6-.6" stroke="#5a4a3a" stroke-width="1"/></svg>'
   },
   'Twin Daggers': {
     category: 'weapon', icon: 'swords', color: '#c9c9d6', price: 0, stats: { atk: 7, spd: 3 }, bonus: { steal: 0.1 },
     trait: 'Steal +10%',
-    desc: 'One from Rika, one from Kairo. Light, quick, and heavy in other ways.'
+    desc: 'Rika’s wavy blade and Kairo’s ring-pommel dagger, one on each hip. Light, quick, and heavy in other ways.',
+    svg: '<svg viewBox="0 0 24 24" class="item-icon" aria-hidden="true"><path d="M5 19c2-2 2.6-3.6 4.4-4.4 1.6-.8 2-2.4 3.8-3.4 1.6-.9 2.2-2.6 4-3.6 1.4-.8 2.6-2.4 4.3-4.1-.9 2.4-1.8 3.8-3.2 4.8-1.6 1.1-2.2 2.8-3.8 3.7-1.7.9-2.2 2.6-3.8 3.4C9 16.2 8.2 17.6 6.4 20.2z" fill="#d8dce6"/><path d="M3 21.6l2.6-2.6" stroke="#2a2420" stroke-width="2.4" stroke-linecap="round"/><path d="M4.2 17.4l3.4 3.4" stroke="#b58a45" stroke-width="1.3"/><path d="M19 19C14 14.8 9.6 10 6 4.4c1.6.6 3 1.6 4.2 2.8 3 3 5.8 6.6 9.8 10.8z" fill="#c4c9d4"/><path d="M19.4 19.4l1.8 1.8" stroke="#4a2e1c" stroke-width="2.4" stroke-linecap="round"/><path d="M17.4 20.4l3-3" stroke="#b58a45" stroke-width="1.3"/><circle cx="22.2" cy="22.2" r="1.3" fill="none" stroke="#d8dce6" stroke-width=".9"/></svg>'
   },
   'Veyrane Baton': {
     category: 'weapon', icon: 'sword', color: '#c09060', price: 60, stats: { atk: 8 },

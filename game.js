@@ -12,7 +12,8 @@ const TILE = 32;
 //     vault (a 2-point line across a wall), guard (polyline patrol route; kind = guard/captain),
 //     fence (the Blackwater shop), overhear (radius, lines = "text | text | text": guards talk nearby),
 //     exit (rectangle; to = district id, spawn = spawn name there), spawn (named arrival point),
-//     label (a place name painted on the map; the object's name is the text).
+//     label (a place name painted on the map; the object's name is the text),
+//     npc (who = noe/severin/patron, look, dir in degrees, line, reach = talk distance, e.g. across a bar), prop (rectangle; kind = counter/table/stage).
 const KIND_BY_TILE = ['#', '.', 'g', 'h', 'f', 'w', 'd'];
 let W = 64;
 let H = 44;
@@ -24,6 +25,9 @@ let GUARD_ROUTES = [];
 let EXITS = [];
 let SPAWNS = {};
 let LABELS = [];
+let NPCS = [];
+let PROPS = [];
+let FURN = new Set();   // tiles blocked by furniture (props)
 const BOAT = { x: 0, y: 0 };
 const KID = { x: 0, y: 0, helped: false };
 const LEDGER_SPOT = { x: 0, y: 0 };
@@ -36,7 +40,7 @@ const tileAt = (px, py) => {
   return grid[ty][tx];
 };
 const solidTile = (t) => t === '#' || t === 'w';
-const isSolidAt = (tx, ty) => tx < 0 || ty < 0 || tx >= W || ty >= H || solidTile(grid[ty][tx]);
+const isSolidAt = (tx, ty) => tx < 0 || ty < 0 || tx >= W || ty >= H || solidTile(grid[ty][tx]) || FURN.has(ty * W + tx);
 const centre = (tx, ty) => ({ x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 });
 
 // Visibility polygon for a light (like Godot's LightOccluder2D): cast rays until they hit a building.
@@ -96,6 +100,13 @@ function buildLevel(map) {
   SPAWNS = { start: LEVEL.start };
   for (const o of of('spawn')) SPAWNS[o.name] = at(o);
   LABELS = of('label').map((o) => ({ ...at(o), text: o.name || prop(o, 'text', '') }));
+  NPCS = of('npc').map((o) => ({ ...at(o), who: prop(o, 'who', 'patron'), look: prop(o, 'look', 0), dir: prop(o, 'dir', 90) * Math.PI / 180, line: prop(o, 'line', ''), reach: prop(o, 'reach', 44) }));
+  PROPS = of('prop').map((o) => ({ x: o.x, y: o.y, w: o.width || TILE, h: o.height || TILE, kind: prop(o, 'kind', 'table') }));
+  FURN = new Set();
+  for (const pr of PROPS) {
+    for (let ty = Math.floor(pr.y / TILE); ty <= Math.floor((pr.y + pr.h - 1) / TILE); ty++)
+      for (let tx = Math.floor(pr.x / TILE); tx <= Math.floor((pr.x + pr.w - 1) / TILE); tx++) FURN.add(ty * W + tx);
+  }
   GUARD_ROUTES = of('guard').map((o) => ({ kind: prop(o, 'kind', 'guard'), pts: line(o) }));
   renderMap();
 }
@@ -251,6 +262,8 @@ function newState() {
     rep: 0,
     deeds: {},
     jobsDone: new Set(),
+    jobsTaken: new Set(),
+    npcs: [],
     stolen: [],
     newItems: new Set(),
     time: 0,
@@ -380,6 +393,8 @@ function collides(e) {
   const x0 = Math.floor((e.x - e.r) / TILE), x1 = Math.floor((e.x + e.r) / TILE);
   const y0 = Math.floor((e.y - e.r) / TILE), y1 = Math.floor((e.y + e.r) / TILE);
   for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (isSolidAt(tx, ty)) return true;
+  // People stand their ground.
+  if (state && state.npcs) for (const n of state.npcs) if (Math.hypot(n.x - e.x, n.y - e.y) < e.r + 9) return true;
   return false;
 }
 function move(e, dx, dy) {
@@ -563,7 +578,10 @@ function use() {
   }
   // 6. The Blackwater fence
   if (FENCE.x && dist(FENCE, p) < 44) { talkToFence(); return; }
-  // 7. Nothing nearby
+  // 7. People
+  const n = npcNear(p);
+  if (n) { talkTo(n); return; }
+  // 8. Nothing nearby
   if (tileAt(p.x, p.y) !== 'h') toast('Nothing to use here.', 1100);
 }
 
@@ -762,8 +780,9 @@ function updateCamera(dt = 0, snap = false) {
   // On touch screens the thumb controls cover the bottom of the view, so keep ZAY in the upper part
   // and let the camera scroll past the map's bottom edge.
   const controls = isTouch ? (vh * 0.34) / zoom : 0;
-  const targetX = Math.max(0, Math.min(W * TILE - viewW, p.x - viewW / 2));
-  const targetY = Math.max(0, Math.min(H * TILE - viewH + controls, p.y - (viewH - controls) / 2));
+  // Maps smaller than the screen (like the Crooked Halo) sit in the middle of the visible area.
+  const targetX = W * TILE <= viewW ? (W * TILE - viewW) / 2 : Math.max(0, Math.min(W * TILE - viewW, p.x - viewW / 2));
+  const targetY = H * TILE <= viewH - controls ? (H * TILE - (viewH - controls)) / 2 : Math.max(0, Math.min(H * TILE - viewH + controls, p.y - (viewH - controls) / 2));
   // Camera2D smoothing: pos += (target - pos) * speed * delta
   const c = snap ? 1 : Math.min(1, CAMERA_SMOOTHING * dt);
   camX += (targetX - camX) * c;
@@ -880,9 +899,11 @@ function render() {
   updateFocus();
 
   drawWater();
+  drawFurniture();
   drawProps();
   for (const g of state.guards) if (inView(g.x, g.y)) drawCone(g);
   for (const g of state.guards) if (inView(g.x, g.y)) drawGuard(g);
+  drawNpcs();
   drawPlayer();
   for (const c of state.projectiles) drawCard(c.x, c.y, c.spin);
   drawBuildings();
@@ -1178,9 +1199,11 @@ function drawPlayer() {
   const sway = Math.sin(t * 5 + p.step) * 6;
   ctx.quadraticCurveTo(-18, sway, -24, sway * 1.6 + 4);
   ctx.stroke();
-  // Body: black rogue layers
-  ctx.fillStyle = '#121218';
+  // Body: black rogue layers on a job; in town, his long charcoal coat over a tan shirt (model sheet).
+  const town = (DISTRICTS[state.district] || {}).look === 'town';
+  ctx.fillStyle = town ? '#2c2f36' : '#121218';
   ctx.beginPath(); ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
+  if (town) { ctx.fillStyle = '#b39a72'; ctx.beginPath(); ctx.moveTo(8, -3); ctx.lineTo(1, 0); ctx.lineTo(8, 3); ctx.closePath(); ctx.fill(); }
   ctx.strokeStyle = 'rgba(150,160,205,.35)'; ctx.lineWidth = 1; ctx.stroke();   // moonlit rim
   // Katana across the back
   ctx.strokeStyle = '#c9c9d6';
@@ -1188,9 +1211,15 @@ function drawPlayer() {
   ctx.beginPath(); ctx.moveTo(-9, -9); ctx.lineTo(6, 10); ctx.stroke();
   ctx.fillStyle = '#e9b65a';
   ctx.fillRect(-11, -11, 3, 3);
-  // Hood and eyes
-  ctx.fillStyle = '#1c1c26';
-  ctx.beginPath(); ctx.arc(2, 0, 6.5, 0, Math.PI * 2); ctx.fill();
+  // Hood and eyes (rogue) or bare head with his locs ponytail (town)
+  if (town) {
+    ctx.fillStyle = '#5a3b2b'; ctx.beginPath(); ctx.arc(2, 0, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1a110c'; ctx.beginPath(); ctx.arc(1, 0, 6.3, Math.PI * 0.55, Math.PI * 1.45); ctx.fill();
+    ctx.strokeStyle = '#1a110c'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(-4, 0); ctx.quadraticCurveTo(-9, 1, -12, -1); ctx.stroke();
+  } else {
+    ctx.fillStyle = '#1c1c26';
+    ctx.beginPath(); ctx.arc(2, 0, 6.5, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.fillStyle = '#f3c25c';
   ctx.fillRect(5, -3, 2, 1.6);
   ctx.fillRect(5, 1.4, 2, 1.6);
