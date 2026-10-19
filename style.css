@@ -166,14 +166,10 @@ kbd { padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.1); fo
 .tbtn { height: 64px; border: 1px solid var(--color-border-strong); border-radius: 18px; background: var(--color-surface-glass); font-weight: 700; font-size: 15px; transition: transform var(--dur-fast), background-color var(--dur); }
 .tbtn.use { background: rgba(233,182,90,.3); }
 .tbtn:active, .tbtn.is-held { transform: scale(.95); background: var(--color-primary-strong); }
-.dpad { position: absolute; left: max(14px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); width: 168px; height: 168px; pointer-events: auto; }
-.dpad-btn { position: absolute; width: 58px; height: 58px; display: grid; place-items: center; border: 1px solid var(--color-border-strong); border-radius: 14px; background: var(--color-surface-glass); touch-action: none; transition: background-color var(--dur-fast); }
-.dpad-btn svg { width: 26px; height: 26px; fill: none; stroke: var(--color-primary-text); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-.dpad-btn.is-held { background: var(--color-primary-strong); }
-.dpad-btn.up { left: 55px; top: 0; }
-.dpad-btn.down { left: 55px; bottom: 0; }
-.dpad-btn.left { left: 0; top: 55px; }
-.dpad-btn.right { right: 0; top: 55px; }
+.stick { position: absolute; left: max(14px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); width: 160px; height: 160px; border: 1px solid var(--color-border-strong); border-radius: 50%; background: radial-gradient(circle, rgba(233,182,90,.08) 0 38%, transparent 39%), var(--color-surface-glass); pointer-events: auto; touch-action: none; }
+.stick::before { content: ''; position: absolute; inset: 14px; border: 1px dashed rgba(233,182,90,.22); border-radius: 50%; }
+.stick-knob { position: absolute; left: 50%; top: 50%; width: 66px; height: 66px; margin: -33px 0 0 -33px; border: 1px solid var(--color-border-accent); border-radius: 50%; background: radial-gradient(circle at 40% 35%, rgba(243,215,154,.55), rgba(233,182,90,.25)); box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.stick.is-held .stick-knob { background: radial-gradient(circle at 40% 35%, rgba(243,215,154,.8), rgba(233,182,90,.45)); }
 
 /* ---------- Screens and panels ---------- */
 .screen { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: radial-gradient(80% 60% at 50% 30%, var(--color-primary-soft), transparent 60%), var(--color-overlay); overflow-y: auto; }

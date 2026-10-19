@@ -46,12 +46,7 @@
   <div id="fade" class="fade" aria-hidden="true"></div>
 
   <div id="touch" class="touch" hidden>
-    <div class="dpad" aria-label="Move">
-      <button type="button" class="dpad-btn up" data-key="arrowup" aria-label="Up"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
-      <button type="button" class="dpad-btn left" data-key="arrowleft" aria-label="Left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
-      <button type="button" class="dpad-btn right" data-key="arrowright" aria-label="Right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
-      <button type="button" class="dpad-btn down" data-key="arrowdown" aria-label="Down"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
-    </div>
+    <div id="stick" class="stick" role="application" aria-label="Move: drag the wheel"><div class="stick-knob"></div></div>
     <div class="touch-buttons">
       <button type="button" data-act="use" class="tbtn use">Use</button>
       <button type="button" data-act="card" class="tbtn card">Card</button>
@@ -79,7 +74,7 @@
         </div>
         <div><h2>Touch</h2>
           <ul>
-            <li>Arrow pad: move</li>
+            <li>Wheel: drag to move (3D: up walks, sideways turns)</li>
             <li>Use · Card · Sprint · Roll buttons · Bag (top)</li>
             <li>Battle: tap a command, then a target</li>
           </ul>
