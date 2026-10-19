@@ -6,8 +6,9 @@
 // coins and cards, but guards reset every visit. Entering a district saves the game.
 
 const DISTRICTS = {
-  lantern: { url: 'levels/lantern-quarter.tmj', name: 'Lantern Quarter' },
-  'crown-estate': { url: 'levels/paper-thief.tmj', name: 'Crown Quarter · House Veyrane estate' }
+  lantern: { url: 'levels/lantern-quarter.tmj', name: 'Lantern Quarter', look: 'town' },
+  'crooked-halo': { url: 'levels/crooked-halo.tmj', name: 'The Crooked Halo', look: 'town' },
+  'crown-estate': { url: 'levels/paper-thief.tmj', name: 'Crown Quarter · House Veyrane estate', look: 'rogue' }
 };
 const START_DISTRICT = 'lantern';
 
@@ -51,6 +52,7 @@ function resetDistrict() {
   state.ledgerTaken = state.jobsDone.has('veyrane-ledger');
   state.leaving = false;
   state.player.hasLedger = false;
+  state.npcs = presentNpcs();
   BARKS.length = 0;
 }
 
@@ -74,7 +76,10 @@ async function enterDistrict(id, spawn = 'start', { save = true } = {}) {
   resetDistrict();
   const at = SPAWNS[state.spawn];
   state.player.x = at.x; state.player.y = at.y;
-  state.exitLock = true;   // don't bounce straight back out if the spawn sits near an exit
+  // Exits stay off until you've walked a little way from where you arrived, so holding the direction you
+  // came in doesn't bounce you straight back through the door.
+  state.exitLock = true;
+  state.arrival = { x: at.x, y: at.y };
   updateCamera(0, true);
   hudCache = '';
   state.mode = 'field';
@@ -87,8 +92,12 @@ async function enterDistrict(id, spawn = 'start', { save = true } = {}) {
 // Called every field frame: walking into an exit travels, unless guards are on you.
 function checkExits(p) {
   const inside = EXITS.find((e) => p.x > e.x && p.x < e.x + e.w && p.y > e.y && p.y < e.y + e.h);
-  if (!inside) { state.exitLock = false; checkExits.warned = false; return; }
-  if (state.exitLock || state.mode !== 'field') return;
+  if (state.exitLock) {
+    if (!inside && (!state.arrival || dist(p, state.arrival) > 44)) state.exitLock = false;
+    return;
+  }
+  if (!inside) { checkExits.warned = false; return; }
+  if (state.mode !== 'field') return;
   if (state.guards.some((g) => g.state === 'alert')) {
     if (!checkExits.warned) { toast('Lose the guards first.'); checkExits.warned = true; }
     return;
@@ -106,7 +115,18 @@ function objectiveInfo() {
     if (!state.ledgerTaken) return { text: "Steal the ledger from House Veyrane's counting house", goal: LEDGER_SPOT };
     return { text: KID.helped ? 'Reach the river boat' : 'Reach the river boat · give your coin to the kid on the dock', goal: BOAT };
   }
+  const taken = state.jobsTaken.has('veyrane-ledger');
+  const reported = state.deeds.reportedLedger;
+  const noe = () => (state.npcs || []).find((n) => n.who === 'noe') || null;
+  if (state.district === 'crooked-halo') {
+    if (!taken && !done) return { text: 'Noe wants a word. She’s behind the bar.', goal: noe() };
+    if (!done) return { text: "Head east to the Crown Quarter: House Veyrane's estate", goal: exitTo('lantern') };
+    if (!reported) return { text: 'Tell Noe it’s done.', goal: noe() };
+    return { text: 'Noe keeps the peace in here.', goal: null };
+  }
+  if (!taken && !done) return { text: 'Noe wants a word. Find her at the Crooked Halo.', goal: exitTo('crooked-halo') };
   if (!done) return { text: "Head east to the Crown Quarter: House Veyrane's estate", goal: exitTo('crown-estate') };
+  if (!reported) return { text: 'Tell Noe it’s done. She’s at the Crooked Halo.', goal: exitTo('crooked-halo') };
   return { text: 'The Lantern Quarter is yours tonight.', goal: null };
 }
 

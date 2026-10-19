@@ -60,13 +60,27 @@ The bag uses larger item slots and separate character and item details, with a s
 
 ## Districts
 
-Bellemorne is split into districts you walk between. A new game starts in the **Lantern Quarter** outside the Crooked Halo; walk east down the main street to reach the **Crown Quarter** (House Veyrane's estate, the ledger job). The estate's west gate leads back.
+Bellemorne is split into districts you walk between. A new game starts in the **Lantern Quarter** outside the Crooked Halo (walk in to meet Noe); walk east down the main street to reach the **Crown Quarter** (House Veyrane's estate, the ledger job). The estate's west gate leads back.
 
 - Your character comes with you: gold, items, gear, level, Name and finished jobs. Each district remembers its opened chests and picked-up coins and cards; guards reset on every visit.
 - You can't leave a district while guards are chasing you.
 - Finishing the ledger job shows the job summary, then sends you back to the Lantern Quarter by the Crooked Halo. Coming back to the estate afterwards is quiet: the ledger is gone.
 - The Lantern Quarter map is a first pass (streets, lamps, the Crooked Halo marked) built to test travel. Its people, the city watch and side activities come next, following the Master Canon (four quarters: Crown, Lantern, River, Soot).
 - Districts are listed in `districts.js`; to add one, add a map in `levels/`, list it there, and connect it with `exit` and `spawn` objects.
+
+## The Crooked Halo, Noe and Severin
+
+The first story loop of the open city:
+
+1. A new game starts outside **the Crooked Halo**. Walk in through its door (south side of the main street).
+2. **Noe** is behind the bar. She tells you about Veyrane's new penalties and the ledger; agree and the job is yours ("No casualties. And you come back.").
+3. Walk east to the Crown Quarter, take the ledger and reach the boat as before.
+4. You're sent back outside the Halo. Tell Noe it's done (+10 Name).
+
+- **Severin** is sometimes at a corner table (always on the night you finish the ledger job). It's neutral ground: he doesn't fight and doesn't threaten. He sits, he watches, and he lets ZAY feel how far his reach goes.
+- The regulars have a line each; the musician on the stage keeps playing.
+- Looks follow the character model sheet: ZAY wears his long charcoal coat over a tan shirt in the city and his black rogue gear on the job; Noe has her curls, white blouse, brown corset and red sash; Severin his grey locs with beads, charcoal coat with silver embroidery, purple sash and silver eyes. Dialog portraits match. In the bag, Rika's wavy dagger, Kairo's ring-pommel dagger and the etched katana have their own icons.
+- People and furniture live in `people.js`; the room is `levels/crooked-halo.tmj`.
 
 ## Saved game
 
@@ -110,6 +124,8 @@ Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lanter
   - `exit` — a rectangle; walking into it loads another district. Properties `to` (district id from `districts.js`) and `spawn` (spawn name there)
   - `spawn` — a named arrival point (the object's name); `start` is also a spawn
   - `label` — a place name painted on the map (the object's name is the text)
+  - `npc` — a person you can talk to (Use / E). Properties `who` (`noe`, `severin` or `patron`), `look` (patron style 0–3), `dir` (facing, in degrees), `line` (what a patron says), `reach` (talk distance, e.g. across the bar)
+  - `prop` — low, solid furniture drawn with a little height. Property `kind`: `counter`, `table` or `stage`
   - `guard` — draw a polyline for the patrol route; property `kind` = `guard` or `captain`
 
 ## 2.5D look
@@ -154,6 +170,7 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `audio/` — Kenney CC0 sounds (AAC)
 - `levels/` — the Tiled map, tileset and tileset image
 - `ui.js` — settings and Options, confirm dialog, HUD tooltips, new-item badge
+- `people.js` — NPCs (Noe, Severin, regulars), what they say, and furniture
 - `districts.js` — the district list, travel between maps, objectives and map labels
 - `save.js` — saved game (this device only): what is saved, loading and the title summary
 - `reputation.js` — the Name score, its tiers and the fence price rule

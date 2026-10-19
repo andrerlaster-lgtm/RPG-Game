@@ -21,12 +21,25 @@ const PORTRAITS = {
   kid: `<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" fill="#141826"/><path d="M10 48c2-10 7-14 14-14s12 4 14 14z" fill="#2d2a3a"/><ellipse cx="24" cy="26" rx="9" ry="10" fill="#6b4a35"/><path d="M15 22c0-8 4-11 9-11s9 3 9 11c-3-3-6-4-9-4s-6 1-9 4z" fill="#1a110c"/><circle cx="20" cy="26" r="1.5" fill="#1a120c"/><circle cx="28" cy="26" r="1.5" fill="#1a120c"/><path d="M21 31c2 1.5 4 1.5 6 0" stroke="#3e281d" stroke-width="1.4" fill="none"/></svg>`,
   fence: `<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" fill="#141826"/><path d="M6 48c2-13 9-18 18-18s16 5 18 18z" fill="#2a2f2a"/><path d="M11 30c-1-15 5-22 13-22s14 7 13 22c-3-6-7-9-13-9s-10 3-13 9z" fill="#1d221d"/><ellipse cx="24" cy="27" rx="8" ry="9" fill="#7a5440"/><rect x="18" y="24" width="5" height="3" rx="1" fill="#0c0c12"/><circle cx="29" cy="26" r="1.4" fill="#1a120c"/><path d="M19 32c3 1 7 1 10-1" stroke="#3e281d" stroke-width="1.4" fill="none"/><circle cx="33" cy="34" r="2" fill="#e9b65a"/></svg>`
 };
+// From the character model sheet: ZAY in town (charcoal long coat, tan shirt, locs ponytail, amber eyes,
+// pointed ears), Noe (curls, white blouse, brown corset, red sash), Severin (grey locs with beads,
+// charcoal high collar with silver embroidery, cold silver eyes).
+Object.assign(PORTRAITS, {
+  zayTown: `<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" fill="#141826"/><path d="M5 48c2-13 9-18 19-18s17 5 19 18z" fill="#2c2f36"/><path d="M19 30l5 12 5-12z" fill="#b39a72"/><path d="M15 31l9 11-6 6zM33 31l-9 11 6 6z" fill="#3a3e47"/><rect x="21" y="26" width="6" height="6" fill="#4e3224"/><path d="M12 22l-5-6 7 3z" fill="#5a3b2b"/><path d="M36 22l5-6-7 3z" fill="#5a3b2b"/><ellipse cx="24" cy="21" rx="10" ry="11.5" fill="#5a3b2b"/><path d="M13 18c0-8 5-11 11-11s11 3 11 11c-3-4-7-5-11-5s-8 1-11 5z" fill="#1a110c"/><path d="M33 12c5 1 8 5 8 11" stroke="#1a110c" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M18 21h4M26 21h4" stroke="#f3c25c" stroke-width="2"/><path d="M21 27c2 1.4 4 1.4 6 0" stroke="#3a2418" stroke-width="1.3" fill="none"/></svg>`,
+  noe: `<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" fill="#141826"/><path d="M6 48c2-12 9-17 18-17s16 5 18 17z" fill="#e6dccb"/><path d="M16 38h16l-2 10H18z" fill="#6b3d27"/><path d="M14 44h20v4H14z" fill="#7a1f2a"/><rect x="21" y="27" width="6" height="6" fill="#4e2c1e"/><ellipse cx="24" cy="21" rx="9.5" ry="11" fill="#5a3424"/><g fill="#160d09"><circle cx="14" cy="14" r="5"/><circle cx="20" cy="9" r="5"/><circle cx="28" cy="9" r="5"/><circle cx="34" cy="14" r="5"/><circle cx="12" cy="22" r="4.5"/><circle cx="36" cy="22" r="4.5"/><circle cx="12" cy="30" r="4"/><circle cx="36" cy="30" r="4"/></g><path d="M18.5 21h4M25.5 21h4" stroke="#c99a52" stroke-width="2"/><path d="M21 27c2 1 4 1 6 0" stroke="#3a1c12" stroke-width="1.3" fill="none"/></svg>`,
+  severin: `<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" fill="#0e1018"/><path d="M5 48c2-13 9-18 19-18s17 5 19 18z" fill="#26262c"/><path d="M15 30l9 4 9-4v8l-9 4-9-4z" fill="#1c1c22"/><path d="M15 30l9 4 9-4" stroke="#b9bcc8" stroke-width="1.2" fill="none"/><path d="M10 40c4-2 6 1 9-1M29 41c3 2 6-1 9 1" stroke="#b9bcc8" stroke-width=".9" fill="none"/><path d="M21 34h6v4h-6z" fill="#4b2552"/><ellipse cx="24" cy="20" rx="9" ry="11" fill="#4b3b3e"/><path d="M14 18c0-8 4-12 10-12s10 4 10 12c-2-4-6-6-10-6s-8 2-10 6z" fill="#a3a3ab"/><g stroke="#a3a3ab" stroke-width="2.4" stroke-linecap="round"><path d="M15 16v16M17 17v18M31 17v18M33 16v16"/></g><g fill="#c9a25a"><circle cx="15" cy="29" r="1.2"/><circle cx="33" cy="30" r="1.2"/></g><path d="M18.5 20.5h4M25.5 20.5h4" stroke="#dfe3ee" stroke-width="1.8"/><path d="M21 27h6" stroke="#2c2224" stroke-width="1.1"/></svg>`,
+  patron: `<svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" fill="#141826"/><path d="M7 48c2-12 8-16 17-16s15 4 17 16z" fill="#3a2d4a"/><path d="M20 32l4 7 4-7" fill="#c9a25a"/><ellipse cx="24" cy="23" rx="9" ry="10.5" fill="#6a4430"/><path d="M11 15h26l-3-3H14z" fill="#16141c"/><path d="M15 12c1-6 5-8 9-8s8 2 9 8z" fill="#16141c"/><path d="M18.5 23h4M25.5 23h4" stroke="#f1ead9" stroke-width="1.8"/><path d="M21 28c2 1 4 1 6 0" stroke="#3a2418" stroke-width="1.2" fill="none"/></svg>`
+});
+
 const SPEAKERS = {
   zay: { name: 'ZAY', portrait: 'zay' },
   guard: { name: 'Veyrane Guard', portrait: 'guard' },
   captain: { name: 'Estate Captain', portrait: 'guard' },
   kid: { name: 'Soot kid', portrait: 'kid' },
-  fence: { name: 'Blackwater fence', portrait: 'fence' }
+  fence: { name: 'Blackwater fence', portrait: 'fence' },
+  noe: { name: 'Noe', portrait: 'noe' },
+  severin: { name: 'Severin', portrait: 'severin' },
+  patron: { name: 'Regular', portrait: 'patron' }
 };
 
 // ---------- Core: say / choose ----------
@@ -79,7 +92,8 @@ function showLine() {
   const line = DLG.lines[DLG.index];
   const sp = SPEAKERS[line.who] || { name: line.who, portrait: 'guard' };
   dui.name.textContent = sp.name;
-  dui.portrait.innerHTML = PORTRAITS[sp.portrait] || '';
+  const town = line.who === 'zay' && (DISTRICTS[state.district] || {}).look === 'town';
+  dui.portrait.innerHTML = PORTRAITS[town ? 'zayTown' : sp.portrait] || '';
   DLG.full = line.text;
   DLG.shown = 0;
   dui.text.textContent = '';
@@ -272,6 +286,8 @@ async function talkToKid() {
 function interactTarget() {
   const p = state.player;
   for (const c of state.chests) if (!c.opened && dist(c, p) < 40) return c;
+  const n = npcNear(p);
+  if (n) return n;
   if (!state.ledgerTaken && dist(LEDGER_SPOT, p) < 40) return LEDGER_SPOT;
   if (dist(KID, p) < 44) return KID;
   if (FENCE.x && dist(FENCE, p) < 44) return FENCE;

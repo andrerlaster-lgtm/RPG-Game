@@ -11,7 +11,7 @@
  "type": "map",
  "version": "1.10",
  "nextlayerid": 3,
- "nextobjectid": 31,
+ "nextobjectid": 33,
  "properties": [
   {
    "name": "title",
@@ -893,7 +893,7 @@
     1,
     1,
     1,
-    1,
+    2,
     1,
     1,
     1,
@@ -1526,7 +1526,7 @@
      "name": "ZAY",
      "type": "start",
      "x": 912,
-     "y": 550,
+     "y": 522,
      "width": 0,
      "height": 0,
      "rotation": 0,
@@ -1538,7 +1538,7 @@
      "name": "halo",
      "type": "spawn",
      "x": 912,
-     "y": 550,
+     "y": 522,
      "width": 0,
      "height": 0,
      "rotation": 0,
@@ -1912,6 +1912,41 @@
        "value": 12
       }
      ]
+    },
+    {
+     "id": 31,
+     "name": "Into the Crooked Halo",
+     "type": "exit",
+     "x": 900,
+     "y": 588,
+     "width": 24,
+     "height": 20,
+     "rotation": 0,
+     "visible": true,
+     "properties": [
+      {
+       "name": "to",
+       "type": "string",
+       "value": "crooked-halo"
+      },
+      {
+       "name": "spawn",
+       "type": "string",
+       "value": "door"
+      }
+     ]
+    },
+    {
+     "id": 32,
+     "name": "halo-door",
+     "type": "spawn",
+     "x": 912,
+     "y": 528,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "point": true
     }
    ]
   }

@@ -31,6 +31,7 @@ function writeSave(where = {}) {
     rep: state.rep, deeds: { ...state.deeds },
     kidHelped: KID.helped,
     jobsDone: [...state.jobsDone],
+    jobsTaken: [...state.jobsTaken],
     district: where.district || state.district,
     spawn: where.spawn || state.spawn,
     world: state.world
@@ -58,6 +59,7 @@ function applySave(s) {
   state.deeds = { ...s.deeds };
   KID.helped = !!s.kidHelped;
   state.jobsDone = new Set(s.jobsDone || []);
+  state.jobsTaken = new Set(s.jobsTaken || s.jobsDone || []);
   state.world = s.world || {};
 }
 

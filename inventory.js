@@ -10,7 +10,8 @@
 function itemIcon(name) {
   const item = ITEMS[name];
   if (!item) return '';
-  return `<span class="item-icon-wrap" style="color:${item.color}">${dsIcon(item.icon, 'item-icon')}</span>`;
+  // Some story items have their own drawing (from the character model sheet) instead of a stock icon.
+  return `<span class="item-icon-wrap" style="color:${item.color}">${item.svg || dsIcon(item.icon, 'item-icon')}</span>`;
 }
 
 // ---------- State ----------
