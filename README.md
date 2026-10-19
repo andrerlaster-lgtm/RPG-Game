@@ -1,6 +1,6 @@
 # Bellemorne: Paper Thief
 
-A top-down stealth game set in Andre's Bellemorne story. One level, a quick try.
+A third-person stealth game set in Andre's Bellemorne story (with the original top-down view as an option).
 
 ZAY slips into House Veyrane's Crown Quarter estate at night, steals the ledger holding the debt that is choking Noe's Crooked Halo, and escapes to a boat on the river.
 
@@ -14,10 +14,11 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 
 | Action | Keyboard / mouse | Touch | Controller |
 |---|---|---|---|
-| Move | Arrow keys | Arrow pad | D-pad or left stick |
+| Move (3D view) | ↑ walk forward, ↓ step back, ← → turn | Arrow pad, same | D-pad or left stick, same |
+| Move (Classic view) | Arrow keys | Arrow pad | D-pad or left stick |
 | Sprint (noisy) | Shift | Hold Sprint | Hold LB or RB |
 | Takedown from behind, tail-vault the estate wall, grab the ledger, give coin | E | Use | A |
-| Throw a card (noise lure; stuns on a direct hit) | Q or right-click (aims at the cursor) | Card (throws where you face) | X |
+| Throw a card (noise lure; stuns on a direct hit) | Q or right-click (3D: straight ahead; Classic: aims at the cursor) | Card (throws where you face) | X |
 | Roll | Space | Roll | B |
 | Bag (inventory) | I or Tab | Bag button (top) | Y |
 | Pause | Esc or P | II button | Start |
@@ -51,7 +52,7 @@ Your end rating depends on how often you were spotted and how many guards you kn
 
 ## Options and HUD
 
-- **Options** (title screen or pause menu): sound volume, guard vision cones on/off, screen shake on/off, and battle speed (Slow / Normal / Fast). Settings are saved in this browser on this device.
+- **Options** (title screen or pause menu): sound volume, guard vision cones on/off, screen shake on/off, **View** (3D or Classic) and battle speed (Slow / Normal / Fast). Settings are saved in this browser on this device.
 - **Restart level** asks for confirmation first.
 - **Bag badge:** a red number on the Bag button counts new items; tabs with new items get a dot, and new items show a "New" tag until you select them.
 - **Tooltips:** hover (or focus, or long-press on a phone) the HP, gold, cards, visibility, Bag and Pause items in the HUD.
@@ -165,7 +166,19 @@ Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lanter
   - `prop` — low, solid furniture drawn with a little height. Property `kind`: `counter`, `table`, `stage` or `stall` (a striped awning)
   - `guard` — draw a polyline for the patrol route; property `kind` = `guard`, `captain` or `watch` (the city watch: calm until it sees a crime)
 
-## 2.5D look
+## 3D view (third person)
+
+The field is drawn in 3D by default, with a chase camera behind ZAY (`render3d.js`, using [Three.js](https://threejs.org) r169, MIT, copied into `vendor/three/`). Battles are still the 2D Final Fantasy-style screen.
+
+- **Only the picture changed.** Maps, collision, stealth, guard vision, saves and every job are the same code as the Classic view. Options → View switches between them at any time.
+- **Controls:** turn with ← →, walk with ↑, step back with ↓. Cards fly straight ahead.
+- **Camera:** sits behind and above ZAY and swings round as he turns. In tight streets it comes in closer and looks down over the rooftops instead of going through a wall. On phones the view is shifted up so ZAY stands above the thumb controls.
+- **What's drawn:** the same painted ground as Classic, buildings as boxes with brick walls, slate roofs and lit or shuttered windows, hedges, furniture and market stalls, lamp posts (the six nearest give real light), the boat, exits as a soft gold glow, place names, vision cones on the ground, awareness rings and "!" over guards, the E / Use / Lift prompt, speech bubbles, and the gold objective arrow.
+- **Characters are placeholders for now:** simple figures built from shapes in the model-sheet colours (ZAY's coat, locs, katana and tail; Noe, Severin, guards, watch, marks and locals). The next step is real rigged CC0 character models (for example Quaternius or Kenney packs); those sites are blocked from the build environment, so the files need to be downloaded and added to the repo by hand.
+- **No WebGL:** if the device can't run 3D, the game stays in Classic and Options says so.
+- Tune it in `render3d.js`: `WALL_H` (building height), `CAM_BACK` / `CAM_UP` (camera distance and height), and `TURN_RATE` in `game.js`.
+
+## 2.5D look (Classic view)
 
 The streets are still top-down, but buildings are drawn with height. The camera is treated as slightly tilted, so each roof sits a little up the screen from its footprint and also leans away from the centre of the view; the walls in between show the sides facing you, with windows (some lit). Lamps get posts whose heads lean the same way, and buildings have soft contact shadows on the ground. ZAY and the guards stand up too (sprite stacking): a shadow at the feet, a stack of body slices, and the detailed figure on top; knocked-out guards lie flat.
 
@@ -213,7 +226,9 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `save.js` — saved game (this device only): what is saved, loading and the title summary
 - `reputation.js` — the Name score, its tiers and the fence price rule
 - `characters.js` — classes, party, spells, item database, equipment, levels, enemies
-- `game.js` — map, lighting, guards, stealth, and the switch into battles
+- `game.js` — map, lighting, guards, stealth, the Classic renderer, and the switch into battles
+- `render3d.js` — the third-person 3D view (Three.js)
+- `vendor/three/` — Three.js r169 (MIT), unmodified
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)
 - `inventory.js` — the bag screen, item icons, equipping and field item use
 
