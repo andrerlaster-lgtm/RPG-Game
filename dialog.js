@@ -39,7 +39,8 @@ const SPEAKERS = {
   fence: { name: 'Blackwater fence', portrait: 'fence' },
   noe: { name: 'Noe', portrait: 'noe' },
   severin: { name: 'Severin', portrait: 'severin' },
-  patron: { name: 'Regular', portrait: 'patron' }
+  patron: { name: 'Regular', portrait: 'patron' },
+  mark: { name: 'Crown gent', portrait: 'patron' }
 };
 
 // ---------- Core: say / choose ----------
@@ -90,7 +91,7 @@ function closeDialog() {
 
 function showLine() {
   const line = DLG.lines[DLG.index];
-  const sp = SPEAKERS[line.who] || { name: line.who, portrait: 'guard' };
+  const sp = SPEAKERS[line.who] || { name: line.who, portrait: 'patron' };
   dui.name.textContent = sp.name;
   const town = line.who === 'zay' && (DISTRICTS[state.district] || {}).look === 'town';
   dui.portrait.innerHTML = PORTRAITS[town ? 'zayTown' : sp.portrait] || '';
@@ -289,6 +290,8 @@ function interactTarget() {
   for (const c of state.chests) if (!c.opened && dist(c, p) < 40) return c;
   const n = npcNear(p);
   if (n) return n;
+  const w = walkerNear(p);
+  if (w && !w.robbed && behind(w, p)) return w;   // a clean lift is possible
   if (!state.ledgerTaken && dist(LEDGER_SPOT, p) < 40) return LEDGER_SPOT;
   if (dist(KID, p) < 44) return KID;
   if (FENCE.x && dist(FENCE, p) < 44) return FENCE;
@@ -299,7 +302,7 @@ function drawInteractPrompt() {
   if (state.mode !== 'field') return;
   const t = interactTarget();
   if (!t) return;
-  const label = isTouch ? 'Use' : 'E';
+  const label = t.isWalker ? 'Lift' : isTouch ? 'Use' : 'E';
   const bob = Math.sin(state.time * 5) * 1.5;
   ctx.font = '800 10px Barlow, sans-serif';
   const w = Math.max(16, ctx.measureText(label).width + 10);

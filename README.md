@@ -65,7 +65,7 @@ Bellemorne is split into districts you walk between. A new game starts in the **
 - Your character comes with you: gold, items, gear, level, Name and finished jobs. Each district remembers its opened chests and picked-up coins and cards; guards reset on every visit.
 - You can't leave a district while guards are chasing you.
 - Finishing the ledger job shows the job summary, then sends you back to the Lantern Quarter by the Crooked Halo. Coming back to the estate afterwards is quiet: the ledger is gone.
-- Side activities (pickpocketing well-off marks, ZAY's card hustle, helping the Soot Quarter) and the River and Soot Quarters come next, following the Master Canon (four quarters: Crown, Lantern, River, Soot).
+- The River and Soot Quarters come next, following the Master Canon (four quarters: Crown, Lantern, River, Soot).
 - Districts are listed in `districts.js`; to add one, add a map in `levels/`, list it there, and connect it with `exit` and `spawn` objects.
 
 ## The Lantern Quarter and the city watch
@@ -76,6 +76,14 @@ The Lantern Quarter is lively, not poor (as the canon insists): a main street wi
 - Hostile watchmen stay hostile for the rest of that visit; leaving and coming back resets them.
 - Caught by the watch: "The city watch drags ZAY off to the Crown Quarter cells", and you go back to your last save.
 - Patrol routes are Tiled `guard` polylines with `kind` = `watch`.
+
+## Side activities in the Lantern Quarter
+
+- **Pickpocketing.** Passers-by walk the streets: well-off **Crown marks** (fine coats, gold trim, hats) and **locals** (Soot Quarter workers). Come up behind one and the prompt says **Lift**; press Use / E to take their purse. Marks carry more and lifting from them costs nothing: ZAY takes from people who can afford it. Lifting from a local costs 10 Name. Grab from the front and they shout "Thief!": every watchman within earshot comes running. In lantern light a mark sometimes notices even from behind, so work the shadows. A watchman standing close can also spot a clean lift.
+- **ZAY's card hustle** (the Crown gent at the card table by the street stage, once per night), from Chapter 1: let him win the first hand to hook him, bleed him slow, then bet him a kid from the crowd can beat him at a child's game. Then choose: the kid keeps all 65 gold (+15 Name), split it (+6), or take it back off the kid (−10). Push too greedy too early and he walks away with you only a few coins up.
+- **Helping the Soot Quarter.** A washerwoman in the west back alley and a shrine keeper in the yard behind the mask shop each need a little gold (20 and 30). Giving it: +8 Name each, once per night.
+- A night ends each time you finish a job, so the hustle and the helping can't be repeated by walking out and back in. Pickpocketed purses reset each visit.
+- Tiled: passers-by are `walker` polylines (`kind` = `mark` or `local`, `look`); the hustle is an `npc` with `who` = `hustle`; people in need are `npc`s with `who` = `needy` and `need`, `ask`, `thanks`.
 
 ## The Crooked Halo, Noe and Severin
 
@@ -105,8 +113,8 @@ Progress is saved in this browser on this device only (nothing is sent anywhere)
 
 A running score from -100 to +100, shown as a chip in the HUD: **Beloved**, **Liked**, **Unknown**, **Distrusted** or **Feared**. It starts neutral in a new game and is kept in your saved game. Hover or long-press the chip for what it means.
 
-- **Kind:** give coin to the Soot kid (the more you give, the more it counts, up to +25), tip the fence 20 gold (+8). A run where you are never spotted and nobody is knocked out also gets a live +10, which disappears if that stops being true.
-- **Cruel:** take 15 gold from the kid (-30; he stops talking to you), take a Potion off the fence's shelf (-20).
+- **Kind:** give coin to the Soot kid (the more you give, the more it counts, up to +25), tip the fence 20 gold (+8), let the kid keep the card-hustle winnings (+15), help Soot Quarter folk in the alleys (+8 each). A run where you are never spotted and nobody is knocked out also gets a live +10, which disappears if that stops being true.
+- **Cruel:** take 15 gold from the kid (-30; he stops talking to you), take a Potion off the fence's shelf (-20), lift a purse from a local worker (-10), take the hustle winnings back off the kid (-10).
 - **What it changes (so far):** the fence only. Beloved is 20% off, Liked 10% off, Distrusted costs 25% more, and Feared is refused service entirely. His greeting changes too. Guards and the other dialog do not react yet.
 - The numbers and tiers live in `reputation.js`; the choices are in `dialog.js` (the kid) and `shop.js` (the fence).
 
@@ -179,6 +187,7 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `audio/` — Kenney CC0 sounds (AAC)
 - `levels/` — the Tiled map, tileset and tileset image
 - `ui.js` — settings and Options, confirm dialog, HUD tooltips, new-item badge
+- `activities.js` — passers-by and pickpocketing, ZAY's card hustle, helping Soot Quarter folk
 - `people.js` — NPCs (Noe, Severin, regulars), what they say, and furniture
 - `districts.js` — the district list, travel between maps, objectives and map labels
 - `save.js` — saved game (this device only): what is saved, loading and the title summary
