@@ -12,6 +12,7 @@
   <script src="icons.js" defer></script>
   <script src="characters.js" defer></script>
   <script src="reputation.js" defer></script>
+  <script src="save.js" defer></script>
   <script src="ui.js" defer></script>
   <script src="game.js" defer></script>
   <script src="battle.js" defer></script>
@@ -79,7 +80,9 @@
           </ul>
         </div>
       </div>
+      <p id="save-summary" class="save-summary" hidden></p>
       <div class="button-row">
+        <button type="button" id="continue" class="btn btn--primary" hidden>Continue</button>
         <button type="button" id="start" class="btn btn--primary">Begin the job</button>
         <button type="button" id="title-options" class="btn btn--secondary"><span data-icon="settings"></span>Options</button>
       </div>

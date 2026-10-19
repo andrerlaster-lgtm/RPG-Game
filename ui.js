@@ -107,7 +107,7 @@ document.getElementById('pause-options').addEventListener('click', openOptions);
 // ---------- Confirm dialog ----------
 const confirmEl = document.getElementById('confirm');
 let confirmResolve = null;
-function confirmDialog(title, text, okLabel) {
+function askConfirm(title, text, okLabel) {
   document.getElementById('confirm-title').textContent = title;
   document.getElementById('confirm-text').textContent = text;
   document.getElementById('confirm-ok').textContent = okLabel;
