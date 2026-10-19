@@ -58,6 +58,15 @@ Your end rating depends on how often you were spotted and how many guards you kn
 
 The bag uses larger item slots and separate character and item details, with a scrollable layout on smaller screens. Battle commands, opponents and party status have separate panels so target selection stays visible.
 
+## Your Name in the Quarter (good and bad)
+
+A running score from -100 to +100, shown as a chip in the HUD: **Beloved**, **Liked**, **Unknown**, **Distrusted** or **Feared**. It starts neutral every run (it is not saved). Hover or long-press the chip for what it means.
+
+- **Kind:** give coin to the Soot kid (the more you give, the more it counts, up to +25), tip the fence 20 gold (+8). A run where you are never spotted and nobody is knocked out also gets a live +10, which disappears if that stops being true.
+- **Cruel:** take 15 gold from the kid (-30; he stops talking to you), take a Potion off the fence's shelf (-20).
+- **What it changes (so far):** the fence only. Beloved is 20% off, Liked 10% off, Distrusted costs 25% more, and Feared is refused service entirely. His greeting changes too. Guards and the other dialog do not react yet.
+- The numbers and tiers live in `reputation.js`; the choices are in `dialog.js` (the kid) and `shop.js` (the fence).
+
 ## Sound and music
 
 - **Recorded effects** from Kenney's [RPG Audio](https://kenney.nl/assets/rpg-audio), [Interface Sounds](https://kenney.nl/assets/interface-sounds) and [Music Jingles](https://kenney.nl/assets/music-jingles) packs (CC0, free to use, no credit required): footsteps, coins, knife draws and slices, thuds, cloth, latches and creaks, menu clicks, and jingles for victory, level up, job complete, getting spotted and getting caught. They live in `audio/` as AAC (`.m4a`) so they play on iPhone too.
@@ -114,6 +123,7 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `audio/` — Kenney CC0 sounds (AAC)
 - `levels/` — the Tiled map, tileset and tileset image
 - `ui.js` — settings and Options, confirm dialog, HUD tooltips, new-item badge
+- `reputation.js` — the Name score, its tiers and the fence price rule
 - `characters.js` — classes, party, spells, item database, equipment, levels, enemies
 - `game.js` — map, lighting, guards, stealth, and the switch into battles
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)

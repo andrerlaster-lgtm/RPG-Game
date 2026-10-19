@@ -228,26 +228,42 @@ async function endingScene() {
 
 async function talkToKid() {
   const p = state.player;
+  if (state.deeds.robbedKid) {
+    await say('kid', "...", "I'm not talking to you, Zay.");
+    return;
+  }
+  const canRob = !KID.helped;
   if (KID.helped && p.gold === 0) {
     await say('kid', 'Noe says you’re trouble, Zay.', 'Good trouble, though. Mostly.');
     return;
   }
-  if (p.gold === 0) {
-    await say('kid', 'Got anything, Zay?');
-    await say('zay', 'Not yet. Give me a little while.');
-    return;
-  }
-  const choice = await choose('kid', KID.helped ? 'Zay! Back again?' : "Zay! You look like you're up to something.", [
-    { text: `Here. Take this. (give ${p.gold} gold)`, value: 'all' },
+  if (p.gold === 0 && !canRob) return;
+  const choice = await choose('kid', p.gold === 0 ? 'Got anything, Zay?' : KID.helped ? 'Zay! Back again?' : "Zay! You look like you're up to something.", [
+    ...(p.gold > 0 ? [{ text: `Here. Take this. (give ${p.gold} gold)`, value: 'all' }] : []),
     ...(p.gold >= 20 ? [{ text: 'Here, half of it. (give ' + Math.floor(p.gold / 2) + ' gold)', value: 'half' }] : []),
+    ...(canRob ? [{ text: 'Turn out your pockets, kid. (take 15 gold)', value: 'rob' }] : []),
     { text: 'Not now, kid.', value: 'no' }
   ]);
-  if (choice === 'no') { await say('kid', 'Fine. I saw nothing. I always see nothing.'); return; }
+  if (choice === 'no') {
+    if (p.gold === 0) await say('zay', 'Not yet. Give me a little while.');
+    else await say('kid', 'Fine. I saw nothing. I always see nothing.');
+    return;
+  }
+  if (choice === 'rob') {
+    p.gold += 15;
+    state.deeds.robbedKid = true;
+    play('coins');
+    addRep(-30);
+    await say('kid', 'Zay... that was my whole week.');
+    await say('zay', 'The guild code covers blood. It never covered this. It should have.');
+    return;
+  }
   const amount = choice === 'all' ? p.gold : Math.floor(p.gold / 2);
   p.gold -= amount;
   p.given += amount;
   KID.helped = true;
   play('coins');
+  addRep(Math.min(25, 5 + Math.floor(amount / 4)));
   await say('kid', amount >= 40 ? "That's... that's a lot of gold, Zay." : 'For real? Thanks, Zay!');
   await say('zay', 'Some Crown Quarter mark paid for that. He just doesn’t know it yet.');
 }
