@@ -142,8 +142,50 @@ if (renderer) {
     c.fillStyle = 'rgba(0,0,0,.25)';
     for (let y = 0; y < h; y += 12) for (let x = (y / 12) % 2 ? 0 : 8; x < w; x += 16) c.fillRect(x, y, 2, 12);
   });
+  // Timber-framed plaster (most of the city), after the half-timbered houses in the Polygonal Mind pack.
+  const timberTex = canvasTex(64, 154, (c, w, h) => {
+    c.fillStyle = '#b5a07c'; c.fillRect(0, 0, w, h);
+    for (let k = 0; k < 140; k++) { c.fillStyle = `rgba(${k % 2 ? '70,50,30' : '255,240,210'},.06)`; c.fillRect((k * 37) % w, (k * 53) % h, 6, 4); }
+    c.fillStyle = '#3a2618';
+    c.fillRect(0, 0, 6, h); c.fillRect(w - 6, 0, 6, h);                         // posts
+    c.fillRect(0, 0, w, 7); c.fillRect(0, 70, w, 6); c.fillRect(0, h - 10, w, 10);   // sill, floor beam, eaves
+    c.lineWidth = 5; c.strokeStyle = '#3a2618';
+    c.beginPath(); c.moveTo(6, 76); c.lineTo(w - 6, h - 12); c.moveTo(6, 70); c.lineTo(w / 2, 7); c.stroke();   // braces
+    c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(0, h - 14, w, 4);
+  });
+  // Pale cut stone for House Veyrane's estate.
+  const stoneTex = canvasTex(64, 154, (c, w, h) => {
+    c.fillStyle = '#6f6a72'; c.fillRect(0, 0, w, h);
+    for (let y = 0, row = 0; y < h; y += 14, row++) for (let x = row % 2 ? -16 : 0; x < w; x += 32) {
+      const v = 128 + ((x * 11 + y * 7) % 19);
+      c.fillStyle = `rgb(${v},${v - 4},${v + 6})`; c.fillRect(x + 1, y + 1, 30, 12);
+    }
+    c.fillStyle = '#8a6a32'; c.fillRect(0, 0, w, 5);
+    c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(0, h - 10, w, 10);
+  });
+  const slopeTex = (base, line) => {
+    const t = canvasTex(64, 64, (c, w, h) => {
+      c.fillStyle = base; c.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 8) {
+        c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(0, y, w, 2);
+        for (let x = (y / 8) % 2 ? 0 : 8; x < w; x += 16) c.fillRect(x, y, 2, 8);
+        c.fillStyle = line; c.fillRect(0, y + 2, w, 1);
+      }
+    });
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  };
   const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
   const roofMat = new THREE.MeshLambertMaterial({ map: roofTex });
+  const WALLS = { brick: wallMat, timber: new THREE.MeshLambertMaterial({ map: timberTex }), stone: new THREE.MeshLambertMaterial({ map: stoneTex }) };
+  const SLOPES = [
+    new THREE.MeshLambertMaterial({ map: slopeTex('#3a3a4c', 'rgba(255,255,255,.08)'), side: THREE.DoubleSide }),   // slate
+    new THREE.MeshLambertMaterial({ map: slopeTex('#2f4a3c', 'rgba(200,255,220,.08)'), side: THREE.DoubleSide }),   // old copper
+    new THREE.MeshLambertMaterial({ map: slopeTex('#5a3328', 'rgba(255,200,170,.08)'), side: THREE.DoubleSide })    // clay tile
+  ];
+  const SHARED_TEX = new Set([wallTex, roofTex, timberTex, stoneTex, ...SLOPES.map((m) => m.map)]);
+  // How high the top of each tile is (walls, plus the roof over them), for the camera.
+  let TOPS = new Float32Array(0);
 
   // ---------- The district (rebuilt whenever a new map loads) ----------
   let world = null, builtFor = null;
@@ -155,7 +197,7 @@ if (renderer) {
         if (o.userData.keep) return;   // shared with the loaded models
         if (o.geometry) o.geometry.dispose();
         const tex = o.material && !Array.isArray(o.material) && o.material.map;
-        if (tex && tex !== wallTex && tex !== roofTex) tex.dispose();
+        if (tex && !SHARED_TEX.has(tex)) tex.dispose();
       });
     }
     world = new THREE.Group();
@@ -184,12 +226,7 @@ if (renderer) {
       else if (t === 'w') water.push([tx, ty]);
     }
     const m4 = new THREE.Matrix4();
-    if (solid.length) {
-      const box = new THREE.BoxGeometry(1, WALL_H, 1);
-      const blocks = new THREE.InstancedMesh(box, [wallMat, wallMat, roofMat, roofMat, wallMat, wallMat], solid.length);
-      solid.forEach(([tx, ty], i) => blocks.setMatrixAt(i, m4.makeTranslation(tx + 0.5, WALL_H / 2, ty + 0.5)));
-      world.add(blocks);
-    }
+    if (solid.length) buildBlocks(m4);
     if (hedges.length) {
       const bush = new THREE.IcosahedronGeometry(0.55, 1);
       const hm = new THREE.InstancedMesh(bush, lambert(0x2a5233), hedges.length);
@@ -307,6 +344,93 @@ if (renderer) {
     for (const m of allMarks) { scene.remove(m); m.material.map.dispose(); }
     allCones.clear(); allMarks.clear();
     snapCamera = true;
+  }
+
+  // ---------- Buildings ----------
+  // The building tiles are split into rectangles. Each one gets a wall finish (timber frame, brick, or
+  // stone on the estate) and, if it's at least two tiles deep, a pitched roof along its long side.
+  // One-tile-thick walls (like the inside of the Crooked Halo) stay flat-topped.
+  function buildRects() {
+    const used = new Uint8Array(W * H), rects = [];
+    const isB = (x, y) => x < W && y < H && grid[y][x] === '#' && !used[y * W + x];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!isB(x, y)) continue;
+      let w = 1; while (w < 12 && isB(x + w, y)) w++;
+      let h = 1; while (h < 12 && [...Array(w).keys()].every((i) => isB(x + i, y + h))) h++;
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) used[(y + j) * W + x + i] = 1;
+      rects.push({ x, y, w, h });
+    }
+    return rects;
+  }
+  function buildBlocks(m4) {
+    const estate = (DISTRICTS[state.district] || {}).look === 'rogue';
+    const rects = buildRects();
+    TOPS = new Float32Array(W * H);
+    const hash = (r) => ((r.x * 73856093) ^ (r.y * 19349663) ^ (r.w * 83492791)) >>> 0;
+    const tiles = { brick: [], timber: [], stone: [] };
+    const gables = { brick: [], timber: [], stone: [] };
+    const slopes = SLOPES.map(() => []);
+    const O = 0.14;   // eaves overhang
+    for (const r of rects) {
+      const hv = hash(r);
+      const finish = estate ? 'stone' : hv % 5 < 3 ? 'timber' : 'brick';
+      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) { tiles[finish].push([r.x + i, r.y + j]); TOPS[(r.y + j) * W + r.x + i] = WALL_H; }
+      if (Math.min(r.w, r.h) < 2) continue;
+      // Ridge along the long side; the roof rises half the short side (capped), like a steep city roof.
+      const alongX = r.w >= r.h;
+      const span = alongX ? r.h : r.w, len = alongX ? r.w : r.h;
+      const pitch = Math.min(1.1, span * 0.42);
+      const y0 = WALL_H - 0.02, y1 = WALL_H + pitch;
+      // In local terms: a runs along the ridge, b across it.
+      const P = (a, b, y) => alongX ? [r.x + a, y, r.y + b] : [r.x + b, y, r.y + a];
+      const sl = slopes[estate ? 0 : hv % 3];
+      const slopeLen = Math.hypot(span / 2 + O, pitch);
+      for (const [b0, b1] of [[-O, span / 2], [span + O, span / 2]]) {
+        const q = [P(-O, b0, y0 - O * 0.4), P(len + O, b0, y0 - O * 0.4), P(len + O, b1, y1), P(-O, b1, y1)];
+        sl.push({ q, u: len + 2 * O, v: slopeLen });
+      }
+      for (const a of [0, len]) gables[finish].push([P(a, 0, y0), P(a, span, y0), P(a, span / 2, y1)]);
+      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) {
+        const b = alongX ? j + 0.5 : i + 0.5;
+        TOPS[(r.y + j) * W + r.x + i] = WALL_H + pitch * (1 - Math.abs(b - span / 2) / (span / 2));
+      }
+    }
+    const box = new THREE.BoxGeometry(1, WALL_H, 1);
+    for (const [finish, list] of Object.entries(tiles)) {
+      if (!list.length) continue;
+      const mat = WALLS[finish];
+      const im = new THREE.InstancedMesh(box, [mat, mat, roofMat, roofMat, mat, mat], list.length);
+      list.forEach(([tx, ty], i) => im.setMatrixAt(i, m4.makeTranslation(tx + 0.5, WALL_H / 2, ty + 0.5)));
+      world.add(im);
+    }
+    // Roof slopes: quads with the slate texture repeating every unit.
+    slopes.forEach((list, k) => {
+      if (!list.length) return;
+      const pos = [], uv = [];
+      for (const { q, u, v } of list) {
+        const [a, b, c, d] = q;
+        pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+        uv.push(0, 0, u, 0, u, v, 0, 0, u, v, 0, v);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.computeVertexNormals();
+      world.add(new THREE.Mesh(g, SLOPES[k]));
+    });
+    // Gable ends, in the same finish as the walls below them.
+    for (const [finish, list] of Object.entries(gables)) {
+      if (!list.length) continue;
+      const pos = [], uv = [];
+      for (const [a, b, c] of list) { pos.push(...a, ...b, ...c); uv.push(0, 0.05, 1, 0.05, 0.5, 0.5); }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.computeVertexNormals();
+      const mat = WALLS[finish].clone();
+      mat.side = THREE.DoubleSide;
+      world.add(new THREE.Mesh(g, mat));
+    }
   }
 
   // ---------- CC0 models (models/props.glb, Polygonal Mind, see THIRD_PARTY_NOTICES.md) ----------
@@ -624,8 +748,9 @@ if (renderer) {
       const t = (i / steps) * back;
       const x = px - dx * t, z = pz - dz * t, y = HEAD + (up - HEAD) * (t / back);
       const tx = Math.floor(x), tz = Math.floor(z);
-      const solid = tx < 0 || tz < 0 || tx >= W || tz >= H || grid[tz][tx] === '#';
-      if (solid && y < WALL_H + 0.15) return Math.max(0.6, t - 0.3);
+      const out = tx < 0 || tz < 0 || tx >= W || tz >= H;
+      const top = out ? WALL_H : TOPS[tz * W + tx] || (grid[tz][tx] === '#' ? WALL_H : 0);
+      if (top && y < top + 0.15) return Math.max(0.6, t - 0.3);
     }
     return back;
   }
