@@ -14,7 +14,13 @@ const NPC_LOOKS = {
     { coat: '#2e3550', low: '#151a28', trim: '#b0b8d0', skin: '#5e3c2a', hair: '#0e0a08', hairStyle: 'hat' }
   ]
 };
-const npcLook = (n) => (n.who === 'patron' ? NPC_LOOKS.patrons[n.look % NPC_LOOKS.patrons.length] : NPC_LOOKS[n.who] || NPC_LOOKS.patrons[0]);
+function npcLook(n) {
+  const from = (list) => list[(n.look || 0) % list.length];
+  if (n.who === 'patron') return from(NPC_LOOKS.patrons);
+  if (n.who === 'mark' || n.who === 'hustle') return from(NPC_LOOKS.marks);
+  if (n.who === 'local' || n.who === 'needy') return from(NPC_LOOKS.locals);
+  return NPC_LOOKS[n.who] || NPC_LOOKS.patrons[0];
+}
 
 // Who is in the room this visit. Severin isn't always there; he is the night you finish the ledger job.
 function presentNpcs() {
@@ -44,6 +50,8 @@ const PATRON_LINES = [
 async function talkTo(n) {
   if (n.who === 'noe') return talkToNoe();
   if (n.who === 'severin') return talkToSeverin();
+  if (n.who === 'hustle') return talkToHustle();
+  if (n.who === 'needy') return talkToNeedy(n);
   return say('patron', ...(n.line ? [n.line] : pick(PATRON_LINES)));
 }
 

@@ -53,6 +53,7 @@ function resetDistrict() {
   state.leaving = false;
   state.player.hasLedger = false;
   state.npcs = presentNpcs();
+  state.walkers = makeWalkers();
   BARKS.length = 0;
 }
 

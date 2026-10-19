@@ -11,7 +11,7 @@
  "type": "map",
  "version": "1.10",
  "nextlayerid": 3,
- "nextobjectid": 54,
+ "nextobjectid": 66,
  "properties": [
   {
    "name": "title",
@@ -1667,7 +1667,7 @@
      "id": 11,
      "name": "Mask shop",
      "type": "label",
-     "x": 1296,
+     "x": 1200,
      "y": 436,
      "width": 0,
      "height": 0,
@@ -2404,6 +2404,392 @@
        "name": "count",
        "type": "int",
        "value": 3
+      }
+     ]
+    },
+    {
+     "id": 54,
+     "name": "mark",
+     "type": "walker",
+     "x": 160,
+     "y": 504,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 1120,
+       "y": 0
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "mark"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 0
+      }
+     ]
+    },
+    {
+     "id": 55,
+     "name": "mark",
+     "type": "walker",
+     "x": 784,
+     "y": 368,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 160,
+       "y": 0
+      },
+      {
+       "x": 160,
+       "y": -32
+      },
+      {
+       "x": 0,
+       "y": -32
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "mark"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 1
+      }
+     ]
+    },
+    {
+     "id": 56,
+     "name": "mark",
+     "type": "walker",
+     "x": 272,
+     "y": 176,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 832,
+       "y": 0
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "mark"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 2
+      }
+     ]
+    },
+    {
+     "id": 57,
+     "name": "mark",
+     "type": "walker",
+     "x": 1136,
+     "y": 112,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 0,
+       "y": 800
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "mark"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 1
+      }
+     ]
+    },
+    {
+     "id": 58,
+     "name": "local",
+     "type": "walker",
+     "x": 272,
+     "y": 848,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 832,
+       "y": 0
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "local"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 0
+      }
+     ]
+    },
+    {
+     "id": 59,
+     "name": "local",
+     "type": "walker",
+     "x": 240,
+     "y": 112,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 0,
+       "y": 800
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "local"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 1
+      }
+     ]
+    },
+    {
+     "id": 60,
+     "name": "local",
+     "type": "walker",
+     "x": 688,
+     "y": 112,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 0,
+       "y": 800
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "local"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 2
+      }
+     ]
+    },
+    {
+     "id": 61,
+     "name": "Card table",
+     "type": "prop",
+     "x": 992,
+     "y": 288,
+     "width": 32,
+     "height": 32,
+     "rotation": 0,
+     "visible": true,
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "table"
+      }
+     ]
+    },
+    {
+     "id": 62,
+     "name": "Crown gent",
+     "type": "npc",
+     "x": 1040,
+     "y": 304,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "point": true,
+     "properties": [
+      {
+       "name": "who",
+       "type": "string",
+       "value": "hustle"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 0
+      },
+      {
+       "name": "dir",
+       "type": "int",
+       "value": 180
+      }
+     ]
+    },
+    {
+     "id": 63,
+     "name": "Cards",
+     "type": "label",
+     "x": 1008,
+     "y": 276,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "point": true
+    },
+    {
+     "id": 64,
+     "name": "Washerwoman",
+     "type": "npc",
+     "x": 112,
+     "y": 752,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "point": true,
+     "properties": [
+      {
+       "name": "who",
+       "type": "string",
+       "value": "needy"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 0
+      },
+      {
+       "name": "dir",
+       "type": "int",
+       "value": 0
+      },
+      {
+       "name": "need",
+       "type": "string",
+       "value": "Veyrane\u2019s man took the laundry money for \u201cback rent\u201d. Two weeks of washing. The Soot Quarter pays first, every time."
+      },
+      {
+       "name": "ask",
+       "type": "int",
+       "value": 20
+      },
+      {
+       "name": "thanks",
+       "type": "string",
+       "value": "Bless you, Zay. My girls eat this week."
+      }
+     ]
+    },
+    {
+     "id": 65,
+     "name": "Shrine keeper",
+     "type": "npc",
+     "x": 1296,
+     "y": 720,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "point": true,
+     "properties": [
+      {
+       "name": "who",
+       "type": "string",
+       "value": "needy"
+      },
+      {
+       "name": "look",
+       "type": "int",
+       "value": 1
+      },
+      {
+       "name": "dir",
+       "type": "int",
+       "value": 180
+      },
+      {
+       "name": "need",
+       "type": "string",
+       "value": "The old shrine roof in the Soot Quarter is coming down. Guards come late. Buildings rot. Taxes still come."
+      },
+      {
+       "name": "ask",
+       "type": "int",
+       "value": 30
+      },
+      {
+       "name": "thanks",
+       "type": "string",
+       "value": "It\u2019s not much of a shrine. But it\u2019s ours. Thank you."
       }
      ]
     }

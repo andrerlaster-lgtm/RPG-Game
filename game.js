@@ -13,7 +13,8 @@ const TILE = 32;
 //     fence (the Blackwater shop), overhear (radius, lines = "text | text | text": guards talk nearby),
 //     exit (rectangle; to = district id, spawn = spawn name there), spawn (named arrival point),
 //     label (a place name painted on the map; the object's name is the text),
-//     npc (who = noe/severin/patron, look, dir in degrees, line, reach = talk distance, e.g. across a bar), prop (rectangle; kind = counter/table/stage).
+//     npc (who = noe/severin/patron/hustle/needy, look, dir in degrees, line, reach = talk distance;
+//          needy: need, ask, thanks), walker (polyline route; kind = mark/local, look: passers-by to pickpocket), prop (rectangle; kind = counter/table/stage).
 const KIND_BY_TILE = ['#', '.', 'g', 'h', 'f', 'w', 'd'];
 let W = 64;
 let H = 44;
@@ -26,6 +27,7 @@ let EXITS = [];
 let SPAWNS = {};
 let LABELS = [];
 let NPCS = [];
+let WALKERS = [];
 let PROPS = [];
 let FURN = new Set();   // tiles blocked by furniture (props)
 const BOAT = { x: 0, y: 0 };
@@ -100,7 +102,11 @@ function buildLevel(map) {
   SPAWNS = { start: LEVEL.start };
   for (const o of of('spawn')) SPAWNS[o.name] = at(o);
   LABELS = of('label').map((o) => ({ ...at(o), text: o.name || prop(o, 'text', '') }));
-  NPCS = of('npc').map((o) => ({ ...at(o), who: prop(o, 'who', 'patron'), look: prop(o, 'look', 0), dir: prop(o, 'dir', 90) * Math.PI / 180, line: prop(o, 'line', ''), reach: prop(o, 'reach', 44) }));
+  NPCS = of('npc').map((o) => ({
+    ...at(o), id: o.id, name: o.name, who: prop(o, 'who', 'patron'), look: prop(o, 'look', 0), dir: prop(o, 'dir', 90) * Math.PI / 180,
+    line: prop(o, 'line', ''), reach: prop(o, 'reach', 44), need: prop(o, 'need', ''), ask: prop(o, 'ask', 20), thanks: prop(o, 'thanks', '')
+  }));
+  WALKERS = of('walker').map((o, i) => ({ pts: line(o), kind: prop(o, 'kind', 'local'), look: prop(o, 'look', i) }));
   PROPS = of('prop').map((o) => ({ x: o.x, y: o.y, w: o.width || TILE, h: o.height || TILE, kind: prop(o, 'kind', 'table') }));
   FURN = new Set();
   for (const pr of PROPS) {
@@ -540,6 +546,11 @@ function use() {
     if (d < 40 && (behind(g, p) || g.state === 'stunned') && (!best || d < dist(best, p))) best = g;
   }
   if (best) { knockOut(best, true); return; }
+  // 1b. Lift a purse from a passer-by
+  // (from the front it's a clumsy grab and they shout; skip it if you're clearly here to talk to someone else)
+  const mark = walkerNear(p);
+  const otherNear = npcNear(p) || dist(KID, p) < 44 || dist(FENCE, p) < 44;
+  if (mark && (behind(mark, p) || !otherNear)) { tryPickpocket(mark); return; }
   // 2. Tail vault over the estate wall
   for (const v of VAULTS) {
     if (dist(v.wall, p) < 46) {
@@ -587,12 +598,12 @@ function use() {
 }
 
 // A crime in front of the city watch: any watchman who can see ZAY or the spot turns hostile.
-function witnessCrime(x, y, victim = null) {
+function witnessCrime(x, y, victim = null, radius = 230) {
   const p = state.player;
   let seen = false;
   for (const g of state.guards) {
     if (!g.watch || g.state === 'down' || g.hostile) continue;
-    const sees = (q) => dist(g, q) < 230 && lineOfSight(g.x, g.y, q.x, q.y);
+    const sees = (q) => dist(g, q) < radius && lineOfSight(g.x, g.y, q.x, q.y);
     if (g === victim || sees(p) || sees({ x, y })) {
       g.hostile = true;
       seen = true;
@@ -932,6 +943,7 @@ function render() {
   for (const g of state.guards) if (inView(g.x, g.y)) drawCone(g);
   for (const g of state.guards) if (inView(g.x, g.y)) drawGuard(g);
   drawNpcs();
+  drawWalkers();
   drawPlayer();
   for (const c of state.projectiles) drawCard(c.x, c.y, c.spin);
   drawBuildings();
@@ -1449,6 +1461,7 @@ function frame(now) {
       updatePlayer(dt);
       updateProjectiles(dt);
       for (const g of state.guards) updateGuard(g, dt);
+      updateWalkers(dt);
       updateBarks(dt);
       checkOverhear();
       for (const e of state.effects) e.t += dt;
