@@ -89,6 +89,14 @@ The map is `levels/paper-thief.tmj`, a [Tiled](https://www.mapeditor.org/) map (
   - `vault` — draw a 2-point line across a 1-tile wall where ZAY can tail-vault
   - `guard` — draw a polyline for the patrol route; property `kind` = `guard` or `captain`
 
+## 2.5D look
+
+The streets are still top-down, but buildings are drawn with height. The camera is treated as slightly tilted, so each roof sits a little up the screen from its footprint and also leans away from the centre of the view; the walls in between show the sides facing you, with windows (some lit). Lamps get posts whose heads lean the same way, and buildings have soft contact shadows on the ground. ZAY and the guards stand up too (sprite stacking): a shadow at the feet, a stack of body slices, and the detailed figure on top; knocked-out guards lie flat.
+
+- Collision, stealth and guard vision are unchanged: they still use the flat map.
+- Anyone a roof covers (a guard behind a building, or ZAY) shows as a faint see-through outline.
+- Tune the look in `game.js`: `ROOF_TILT` (how tall buildings look), `ROOF_LIFT` (perspective lean) `LAMP_LIFT`, and `CHAR_HEIGHT` / `STACK_SLICES` for the characters.
+
 ## Borrowed from Godot
 
 Techniques from the [Godot Engine](https://github.com/godotengine/godot) (MIT), re-written in this game's JavaScript:
