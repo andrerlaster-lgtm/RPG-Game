@@ -1,7 +1,7 @@
 'use strict';
 
 // Saved game: kept in this browser on this device (localStorage), never sent anywhere.
-// It is written when a job is completed. Getting caught does not save, so you go back to the last save.
+// It is written when you enter a district and when a job is completed. Getting caught does not save, so you go back to the last save.
 // Bump SAVE_VERSION if the shape changes; an old or broken save is ignored instead of crashing the game.
 
 const SAVE_KEY = 'bellemorne-paper-thief-save';
@@ -15,7 +15,8 @@ function loadSave() {
   } catch { return null; }
 }
 
-function writeSave() {
+// where: override the saved location (after a job you return to the city).
+function writeSave(where = {}) {
   const p = state.player;
   const data = {
     v: SAVE_VERSION,
@@ -29,7 +30,10 @@ function writeSave() {
     }),
     rep: state.rep, deeds: { ...state.deeds },
     kidHelped: KID.helped,
-    jobsDone: [...state.jobsDone]
+    jobsDone: [...state.jobsDone],
+    district: where.district || state.district,
+    spawn: where.spawn || state.spawn,
+    world: state.world
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); return true; } catch { return false; }
 }
@@ -54,6 +58,7 @@ function applySave(s) {
   state.deeds = { ...s.deeds };
   KID.helped = !!s.kidHelped;
   state.jobsDone = new Set(s.jobsDone || []);
+  state.world = s.world || {};
 }
 
 // One line for the title screen: "Level 2 · 45 gold · Liked · 1 job done".

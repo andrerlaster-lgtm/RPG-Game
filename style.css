@@ -184,6 +184,8 @@ kbd { padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.1); fo
 .controls { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin: 18px 0; padding: 14px 16px; border-radius: 14px; background: rgba(255,255,255,.04); }
 .controls ul { margin: 0; padding-left: 18px; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.7; }
 .button-row { display: grid; gap: 10px; }
+.fade { position: fixed; inset: 0; z-index: 15; background: #05060c; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.fade.is-on { opacity: 1; }
 .save-summary { margin: 0 0 10px; color: var(--color-text-muted); font-size: var(--text-sm); text-align: center; }
 .end-stats { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 18px 0 22px; padding: 14px 16px; border-radius: 14px; background: rgba(255,255,255,.04); }
 .end-stats dt { color: var(--color-text-muted); }

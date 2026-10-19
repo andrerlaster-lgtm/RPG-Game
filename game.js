@@ -5,13 +5,14 @@
 
 const TILE = 32;
 // ---------- Level (Tiled map) ----------
-// The level lives in levels/paper-thief.tmj and can be edited in Tiled (mapeditor.org).
+// Each district is a Tiled map in levels/ (list in districts.js), editable in Tiled (mapeditor.org).
 //   Tile layer "ground": tiles 1-7 = building, street, garden, hedge, floor, river, dock.
 //   Object layer "objects" (object Class/Type):
 //     start, lamp (radius), chest (item), coin (gold), cards (count), ledger, kid, boat,
 //     vault (a 2-point line across a wall), guard (polyline patrol route; kind = guard/captain),
-//     fence (the Blackwater shop), overhear (radius, lines = "text | text | text": guards talk nearby).
-const LEVEL_URL = 'levels/paper-thief.tmj';
+//     fence (the Blackwater shop), overhear (radius, lines = "text | text | text": guards talk nearby),
+//     exit (rectangle; to = district id, spawn = spawn name there), spawn (named arrival point),
+//     label (a place name painted on the map; the object's name is the text).
 const KIND_BY_TILE = ['#', '.', 'g', 'h', 'f', 'w', 'd'];
 let W = 64;
 let H = 44;
@@ -20,6 +21,9 @@ let LEVEL = null;
 let LAMPS = [];
 let VAULTS = [];
 let GUARD_ROUTES = [];
+let EXITS = [];
+let SPAWNS = {};
+let LABELS = [];
 const BOAT = { x: 0, y: 0 };
 const KID = { x: 0, y: 0, helped: false };
 const LEDGER_SPOT = { x: 0, y: 0 };
@@ -83,11 +87,15 @@ function buildLevel(map) {
     const a = pts[0], b = pts[pts.length - 1];
     return { a, b, wall: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   });
-  FENCE.x = 0; FENCE.y = 0;
+  // One-of-a-kind spots; a district without one parks it far off the map.
   for (const [target, kind] of [[BOAT, 'boat'], [KID, 'kid'], [LEDGER_SPOT, 'ledger'], [FENCE, 'fence']]) {
     const o = of(kind)[0];
-    if (o) Object.assign(target, at(o));
+    Object.assign(target, o ? at(o) : { x: -1e5, y: -1e5 });
   }
+  EXITS = of('exit').map((o) => ({ x: o.x, y: o.y, w: o.width || TILE, h: o.height || TILE, to: prop(o, 'to', ''), spawn: prop(o, 'spawn', 'start') }));
+  SPAWNS = { start: LEVEL.start };
+  for (const o of of('spawn')) SPAWNS[o.name] = at(o);
+  LABELS = of('label').map((o) => ({ ...at(o), text: o.name || prop(o, 'text', '') }));
   GUARD_ROUTES = of('guard').map((o) => ({ kind: prop(o, 'kind', 'guard'), pts: line(o) }));
   renderMap();
 }
@@ -221,6 +229,15 @@ function renderMap() {
 
 // ---------- State ----------
 let state;
+function makeGuard(route) {
+  const pts = route.pts;
+  return {
+    kind: route.kind,
+    x: pts[0].x, y: pts[0].y, r: 11, dir: 0, route: pts, ri: 1 % pts.length,
+    state: 'patrol', meter: 0, hp: 3, path: [], pathT: 0, pathGoal: null, target: null,
+    lostT: 0, lookT: 0, attackCd: 0, windup: 0, stunT: 0, seenBodies: new Set(), speed: 52
+  };
+}
 function newState() {
   return {
     running: false,
@@ -242,15 +259,10 @@ function newState() {
       gold: 0, given: 0, cards: 5, invuln: 0, dashT: 0, dashCd: 0, slashCd: 0, slashT: 0,
       noiseT: 0, lit: false, hidden: false, moving: false, sprint: false, hasLedger: false, step: 0
     },
-    guards: GUARD_ROUTES.map((route) => {
-      const pts = route.pts;
-      return {
-        kind: route.kind,
-        x: pts[0].x, y: pts[0].y, r: 11, dir: 0, route: pts, ri: 1 % pts.length,
-        state: 'patrol', meter: 0, hp: 3, path: [], pathT: 0, pathGoal: null, target: null,
-        lostT: 0, lookT: 0, attackCd: 0, windup: 0, stunT: 0, seenBodies: new Set(), speed: 52
-      };
-    }),
+    guards: GUARD_ROUTES.map(makeGuard),
+    district: null,
+    spawn: 'start',
+    world: {},
     coins: LEVEL.coins.map((c) => ({ ...c, taken: false })),
     cardPickups: LEVEL.cards.map((c) => ({ ...c, taken: false })),
     overhears: LEVEL.overhears.map((o) => ({ ...o, done: false })),
@@ -492,8 +504,9 @@ function updatePlayer(dt) {
   // Boat
   if (Math.hypot(p.x - BOAT.x, p.y - BOAT.y) < 70) {
     if (p.hasLedger && !state.leaving) { state.leaving = true; endingScene().then(() => finish(true)); }
-    else if (!updatePlayer.boatHint) { toast("Not leaving without Veyrane's ledger."); updatePlayer.boatHint = true; }
+    else if (!state.ledgerTaken && !updatePlayer.boatHint) { toast("Not leaving without Veyrane's ledger."); updatePlayer.boatHint = true; }
   } else updatePlayer.boatHint = false;
+  checkExits(p);
 }
 
 function behind(g, p) {
@@ -903,6 +916,7 @@ function render() {
   for (const l of LAMPS) if (inView(l.x, l.y, l.r)) glow(l.x, l.y, l.r * 0.85, 'rgba(233,170,80,0.2)', l.poly);
   ctx.globalCompositeOperation = 'source-over';
   drawLitWindows();
+  drawLabels();
   for (const l of LAMPS) if (inView(l.x, l.y, 40)) drawLamp(l.x, l.y);
   drawEffects();
   drawBarks();
@@ -1218,7 +1232,8 @@ function drawEffects() {
 }
 function drawObjectiveArrow() {
   const p = state.player;
-  const goal = state.ledgerTaken ? BOAT : LEDGER_SPOT;
+  const goal = objectiveInfo().goal;
+  if (!goal) return;
   const d = dist(goal, p);
   if (d < 120) return;
   const a = Math.atan2(goal.y - p.y, goal.x - p.x);
@@ -1239,8 +1254,7 @@ let hudCache = '';
 function updateHud() {
   const p = state.player;
   const vis = p.hidden ? 'Hidden' : p.lit ? 'In the light' : 'Shadow';
-  const objective = !state.ledgerTaken ? "Steal the ledger from House Veyrane's counting house"
-    : KID.helped ? 'Reach the river boat' : 'Reach the river boat · give your coin to the kid on the dock';
+  const objective = objectiveInfo().text;
   const lead = state.party[0];
   const tier = repTier();
   const key = [lead.hp, p.gold, p.cards, vis, objective, tier.label].join('|');
@@ -1267,8 +1281,11 @@ function finish(won) {
   let saveNote = loadSave() ? 'Not saved · back to your last save' : 'Not saved';
   if (won) {
     state.jobsDone.add('veyrane-ledger');
-    saveNote = writeSave() ? 'Saved on this device' : 'Could not save (browser storage is off)';
+    rememberDistrict();
+    // You come back to the city by the Crooked Halo after a job.
+    saveNote = writeSave({ district: START_DISTRICT, spawn: 'halo' }) ? 'Saved on this device' : 'Could not save (browser storage is off)';
   }
+  document.getElementById('again').textContent = won ? 'Back to the Lantern Quarter' : loadSave() ? 'Try again from your last save' : 'Try again';
   const end = document.getElementById('end');
   const mins = Math.floor(state.time / 60), secs = String(Math.floor(state.time % 60)).padStart(2, '0');
   let rating;
@@ -1302,13 +1319,16 @@ function finish(won) {
   play(won ? 'jComplete' : 'jCaught');
 }
 
-// fromSave: carry over the saved character (gold, items, gear, level, Name, jobs) instead of starting fresh.
-function start(fromSave = false) {
+// fromSave: carry over the saved character (gold, items, gear, level, Name, jobs) and where you were,
+// instead of starting fresh in the Lantern Quarter.
+async function start(fromSave = false) {
   initAudio();
+  const save = fromSave ? loadSave() : null;
   state = newState();
   KID.helped = false;
-  const save = fromSave ? loadSave() : null;
   if (save) applySave(save);
+  const where = save && DISTRICTS[save.district] ? save.district : START_DISTRICT;
+  if (!(await enterDistrict(where, save ? save.spawn : 'start', { save: !save }))) return;
   hudCache = '';
   state.running = true;
   document.getElementById('title').hidden = true;
@@ -1325,7 +1345,7 @@ function start(fromSave = false) {
   setMusic('night');
   updateHud();
   BARKS.length = 0;
-  setTimeout(() => { if (state.running && state.mode === 'field') openingScene(); }, 350);
+  if (!save) setTimeout(() => { if (state.running && state.mode === 'field') openingScene(); }, 350);
   updateBagBadge();
 }
 function togglePause() {
@@ -1348,7 +1368,7 @@ document.getElementById('restart-pause').addEventListener('click', async () => {
   const saved = !!loadSave();
   const ok = await askConfirm('Restart the level?', saved
     ? 'ZAY goes back to your last save. Anything since then is lost.'
-    : 'ZAY goes back to the Soot Quarter. Everything from this run is lost: gold, items, levels.', 'Restart');
+    : 'ZAY goes back to the start of the Lantern Quarter. Everything from this run is lost: gold, items, levels.', 'Restart');
   if (ok) start(saved);
 });
 document.getElementById('pause-btn').addEventListener('click', () => { if (state.running) togglePause(); });
@@ -1364,6 +1384,7 @@ function frame(now) {
     else if (state.mode === 'inventory') updateInventory();
     else if (state.mode === 'dialog') { if (DLG.prevMode === 'battle') updateBattle(dt); updateDialog(dt); }
     else if (state.mode === 'shop') updateShop();
+    else if (state.mode === 'loading') { /* a district is loading */ }
     else {
       updatePlayer(dt);
       updateProjectiles(dt);
@@ -1401,8 +1422,7 @@ function refreshTitle() {
 }
 startBtn.disabled = true;
 startBtn.textContent = 'Loading the city…';
-fetch(LEVEL_URL)
-  .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+loadDistrict(START_DISTRICT)
   .then((map) => {
     buildLevel(map);
     state = newState();
