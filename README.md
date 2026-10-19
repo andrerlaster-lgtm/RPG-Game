@@ -174,6 +174,7 @@ The field is drawn in 3D by default, with a chase camera behind ZAY (`render3d.j
 - **Controls:** turn with ← →, walk with ↑, step back with ↓. Cards fly straight ahead.
 - **Camera:** sits behind and above ZAY and swings round as he turns. In tight streets it comes in closer and looks down over the rooftops instead of going through a wall. On phones the view is shifted up so ZAY stands above the thumb controls.
 - **What's drawn:** the same painted ground as Classic, buildings as boxes with brick walls, slate roofs and lit or shuttered windows, hedges, furniture and market stalls, lamp posts (the six nearest give real light), the boat, exits as a soft gold glow, place names, vision cones on the ground, awareness rings and "!" over guards, the E / Use / Lift prompt, speech bubbles, and the gold objective arrow.
+- **Market stalls, stools and kegs are real models:** CC0 models by Polygonal Mind (`models/props.glb`, 644 KB, loaded by `vendor/three/addons/GLTFLoader.js`). Food and mask stalls use the market booths, facing the open street and fitted to the stall's tiles. Tables get stools, and the Crooked Halo bar gets kegs. If the file can't load, the simple boxes are used instead.
 - **Characters are placeholders for now:** simple figures built from shapes in the model-sheet colours (ZAY's coat, locs, katana and tail; Noe, Severin, guards, watch, marks and locals). The next step is real rigged CC0 character models (for example Quaternius or Kenney packs); those sites are blocked from the build environment, so the files need to be downloaded and added to the repo by hand.
 - **No WebGL:** if the device can't run 3D, the game stays in Classic and Options says so.
 - Tune it in `render3d.js`: `WALL_H` (building height), `CAM_BACK` / `CAM_UP` (camera distance and height), and `TURN_RATE` in `game.js`.
@@ -228,7 +229,8 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `characters.js` — classes, party, spells, item database, equipment, levels, enemies
 - `game.js` — map, lighting, guards, stealth, the Classic renderer, and the switch into battles
 - `render3d.js` — the third-person 3D view (Three.js)
-- `vendor/three/` — Three.js r169 (MIT), unmodified
+- `vendor/three/` — Three.js r169 (MIT), plus its GLTF loader in `addons/`
+- `models/props.glb` — CC0 market stalls, stools and kegs (Polygonal Mind)
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)
 - `inventory.js` — the bag screen, item icons, equipping and field item use
 

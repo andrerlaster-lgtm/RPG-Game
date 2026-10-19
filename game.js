@@ -107,7 +107,7 @@ function buildLevel(map) {
     line: prop(o, 'line', ''), reach: prop(o, 'reach', 44), need: prop(o, 'need', ''), ask: prop(o, 'ask', 20), thanks: prop(o, 'thanks', '')
   }));
   WALKERS = of('walker').map((o, i) => ({ pts: line(o), kind: prop(o, 'kind', 'local'), look: prop(o, 'look', i) }));
-  PROPS = of('prop').map((o) => ({ x: o.x, y: o.y, w: o.width || TILE, h: o.height || TILE, kind: prop(o, 'kind', 'table') }));
+  PROPS = of('prop').map((o) => ({ x: o.x, y: o.y, w: o.width || TILE, h: o.height || TILE, kind: prop(o, 'kind', 'table'), name: o.name || '' }));
   FURN = new Set();
   for (const pr of PROPS) {
     for (let ty = Math.floor(pr.y / TILE); ty <= Math.floor((pr.y + pr.h - 1) / TILE); ty++)
