@@ -58,9 +58,19 @@ Your end rating depends on how often you were spotted and how many guards you kn
 
 The bag uses larger item slots and separate character and item details, with a scrollable layout on smaller screens. Battle commands, opponents and party status have separate panels so target selection stays visible.
 
+## Saved game
+
+Progress is saved in this browser on this device only (nothing is sent anywhere). It is written each time you complete a job; getting caught does not save, so the next try starts from your last save.
+
+- **Saved:** gold, cards, items, equipped gear, ZAY's level, EXP and stats, your Name and the choices behind it, whether you helped the Soot kid, and finished jobs. HP and MP start full when you continue.
+- **Title screen:** with a save you get **Continue** (with a one-line summary) and **New game**, which asks before erasing the save.
+- **Restart level** (pause menu) goes back to your last save if there is one.
+- Clearing the browser's site data, or a private window, means no save. The code is in `save.js`.
+- For now there is one job, so Continue replays the Veyrane heist with your saved character. Districts and the city come next.
+
 ## Your Name in the Quarter (good and bad)
 
-A running score from -100 to +100, shown as a chip in the HUD: **Beloved**, **Liked**, **Unknown**, **Distrusted** or **Feared**. It starts neutral every run (it is not saved). Hover or long-press the chip for what it means.
+A running score from -100 to +100, shown as a chip in the HUD: **Beloved**, **Liked**, **Unknown**, **Distrusted** or **Feared**. It starts neutral in a new game and is kept in your saved game. Hover or long-press the chip for what it means.
 
 - **Kind:** give coin to the Soot kid (the more you give, the more it counts, up to +25), tip the fence 20 gold (+8). A run where you are never spotted and nobody is knocked out also gets a live +10, which disappears if that stops being true.
 - **Cruel:** take 15 gold from the kid (-30; he stops talking to you), take a Potion off the fence's shelf (-20).
@@ -131,6 +141,7 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `audio/` — Kenney CC0 sounds (AAC)
 - `levels/` — the Tiled map, tileset and tileset image
 - `ui.js` — settings and Options, confirm dialog, HUD tooltips, new-item badge
+- `save.js` — saved game (this device only): what is saved, loading and the title summary
 - `reputation.js` — the Name score, its tiers and the fence price rule
 - `characters.js` — classes, party, spells, item database, equipment, levels, enemies
 - `game.js` — map, lighting, guards, stealth, and the switch into battles

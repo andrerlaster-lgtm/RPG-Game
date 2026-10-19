@@ -233,6 +233,7 @@ function newState() {
     battles: 0,
     rep: 0,
     deeds: {},
+    jobsDone: new Set(),
     stolen: [],
     newItems: new Set(),
     time: 0,
@@ -1262,6 +1263,12 @@ function finish(won) {
   state.over = true;
   state.running = false;
   const p = state.player;
+  // A finished job is saved; getting caught isn't, so the next try starts from the last save.
+  let saveNote = loadSave() ? 'Not saved · back to your last save' : 'Not saved';
+  if (won) {
+    state.jobsDone.add('veyrane-ledger');
+    saveNote = writeSave() ? 'Saved on this device' : 'Could not save (browser storage is off)';
+  }
   const end = document.getElementById('end');
   const mins = Math.floor(state.time / 60), secs = String(Math.floor(state.time % 60)).padStart(2, '0');
   let rating;
@@ -1285,7 +1292,8 @@ function finish(won) {
     ['Casualties', '0 · the code held'],
     ['Gold given away', p.given],
     ['Name in the Quarter', repTier().label],
-    ['Gold kept', p.gold]
+    ['Gold kept', p.gold],
+    ['Progress', saveNote]
   ];
   document.getElementById('end-stats').innerHTML = stats.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
   document.getElementById('touch').hidden = true;
@@ -1294,10 +1302,13 @@ function finish(won) {
   play(won ? 'jComplete' : 'jCaught');
 }
 
-function start() {
+// fromSave: carry over the saved character (gold, items, gear, level, Name, jobs) instead of starting fresh.
+function start(fromSave = false) {
   initAudio();
   state = newState();
   KID.helped = false;
+  const save = fromSave ? loadSave() : null;
+  if (save) applySave(save);
   hudCache = '';
   state.running = true;
   document.getElementById('title').hidden = true;
@@ -1322,12 +1333,23 @@ function togglePause() {
   suspendMusic(state.paused);
   document.getElementById('pause').hidden = !state.paused;
 }
-document.getElementById('start').addEventListener('click', start);
-document.getElementById('again').addEventListener('click', start);
+document.getElementById('start').addEventListener('click', async () => {
+  if (loadSave()) {
+    const ok = await askConfirm('Start a new game?', 'Your saved game on this device will be erased: gold, items, levels and your Name.', 'New game');
+    if (!ok) return;
+    clearSave();
+  }
+  start();
+});
+document.getElementById('continue').addEventListener('click', () => start(true));
+document.getElementById('again').addEventListener('click', () => start(!!loadSave()));
 document.getElementById('resume').addEventListener('click', togglePause);
 document.getElementById('restart-pause').addEventListener('click', async () => {
-  const ok = await confirmDialog('Restart the level?', 'ZAY goes back to the Soot Quarter. Everything from this run is lost: gold, items, levels.', 'Restart');
-  if (ok) start();
+  const saved = !!loadSave();
+  const ok = await askConfirm('Restart the level?', saved
+    ? 'ZAY goes back to your last save. Anything since then is lost.'
+    : 'ZAY goes back to the Soot Quarter. Everything from this run is lost: gold, items, levels.', 'Restart');
+  if (ok) start(saved);
 });
 document.getElementById('pause-btn').addEventListener('click', () => { if (state.running) togglePause(); });
 
@@ -1365,6 +1387,18 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 const startBtn = document.getElementById('start');
+// Title buttons: Continue + New game when there's a save, otherwise just Begin the job.
+function refreshTitle() {
+  const save = loadSave();
+  const cont = document.getElementById('continue'), summary = document.getElementById('save-summary');
+  cont.hidden = !save;
+  summary.hidden = !save;
+  if (save) summary.textContent = 'Saved on this device: ' + saveSummary(save);
+  startBtn.textContent = save ? 'New game' : 'Begin the job';
+  startBtn.className = 'btn ' + (save ? 'btn--secondary' : 'btn--primary');
+  // Returning players shouldn't have to scroll past the instructions to find Continue.
+  if (save) document.querySelector('#title .lede').after(summary, startBtn.parentElement);
+}
 startBtn.disabled = true;
 startBtn.textContent = 'Loading the city…';
 fetch(LEVEL_URL)
@@ -1373,6 +1407,6 @@ fetch(LEVEL_URL)
     buildLevel(map);
     state = newState();
     startBtn.disabled = false;
-    startBtn.textContent = 'Begin the job';
+    refreshTitle();
   })
   .catch(() => { startBtn.textContent = 'Could not load the level. Reload to try again.'; });
