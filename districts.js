@@ -8,6 +8,7 @@
 const DISTRICTS = {
   lantern: { url: 'levels/lantern-quarter.tmj', name: 'Lantern Quarter', look: 'town' },
   'crooked-halo': { url: 'levels/crooked-halo.tmj', name: 'The Crooked Halo', look: 'town' },
+  'river-quarter': { url: 'levels/river-quarter.tmj', name: 'River Quarter', look: 'town' },
   'crown-estate': { url: 'levels/paper-thief.tmj', name: 'Crown Quarter · House Veyrane estate', look: 'rogue' }
 };
 const START_DISTRICT = 'lantern';
@@ -104,6 +105,11 @@ function checkExits(p) {
     if (!checkExits.warned) { toast('Lose the guards first.'); checkExits.warned = true; }
     return;
   }
+  // The ledger only leaves the estate by the river boat (any other way out would lose it).
+  if (p.hasLedger) {
+    if (!checkExits.warned) { toast('Not with the ledger. Get it to the river boat.', 2200); checkExits.warned = true; }
+    return;
+  }
   state.exitLock = true;
   enterDistrict(inside.to, inside.spawn);
 }
@@ -119,6 +125,13 @@ function objectiveInfo() {
   }
   const taken = state.jobsTaken.has('veyrane-ledger');
   const reported = state.deeds.reportedLedger;
+  if (state.district === 'river-quarter') {
+    const boatman = (state.npcs || []).find((n) => n.who === 'boatman') || null;
+    if (taken && !done) return { text: 'The boatman at the smuggler slip can take you upriver to the Veyrane docks.', goal: boatman };
+    const owed = !taken || (done && !reported) || (reported && !state.jobsDone.has(COLLECTOR_JOB));
+    if (owed) return { text: 'Noe’s waiting on you in the Lantern Quarter.', goal: exitTo('lantern') };
+    return { text: 'Blackwater Market keeps late hours.', goal: null };
+  }
   const noe = () => (state.npcs || []).find((n) => n.who === 'noe') || null;
   // Job 2: the collector's satchel (after the ledger is reported)
   const J2 = COLLECTOR_JOB, j2taken = state.jobsTaken.has(J2), j2done = state.jobsDone.has(J2);

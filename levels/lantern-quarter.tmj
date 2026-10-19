@@ -11,7 +11,7 @@
  "type": "map",
  "version": "1.10",
  "nextlayerid": 3,
- "nextobjectid": 69,
+ "nextobjectid": 72,
  "properties": [
   {
    "name": "title",
@@ -1437,6 +1437,9 @@
     1,
     1,
     1,
+    2,
+    2,
+    2,
     1,
     1,
     1,
@@ -1480,12 +1483,9 @@
     1,
     1,
     1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    2,
+    2,
+    2,
     1,
     1,
     1,
@@ -2942,6 +2942,53 @@
        "value": "collector"
       }
      ]
+    },
+    {
+     "id": 69,
+     "name": "To the River Quarter",
+     "type": "exit",
+     "x": 648,
+     "y": 1004,
+     "width": 80,
+     "height": 20,
+     "rotation": 0,
+     "visible": true,
+     "properties": [
+      {
+       "name": "to",
+       "type": "string",
+       "value": "river-quarter"
+      },
+      {
+       "name": "spawn",
+       "type": "string",
+       "value": "from-lantern"
+      }
+     ]
+    },
+    {
+     "id": 70,
+     "name": "from-river",
+     "type": "spawn",
+     "x": 688,
+     "y": 936,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "point": true
+    },
+    {
+     "id": 71,
+     "name": "To the River Quarter",
+     "type": "label",
+     "x": 688,
+     "y": 980,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "point": true
     }
    ]
   }
