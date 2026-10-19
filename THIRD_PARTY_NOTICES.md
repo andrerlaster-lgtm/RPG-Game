@@ -61,3 +61,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+`vendor/three/addons/GLTFLoader.js` and `vendor/three/addons/BufferGeometryUtils.js` come from the same Three.js 0.169.0 package (`examples/jsm/`, MIT, same licence as above). The only change is their import lines, which point at `../three.module.min.js` and `./BufferGeometryUtils.js` so they load without an import map.
+
+
+## 3D models — Polygonal Mind (CC0)
+
+`models/props.glb` is built from models by [Polygonal Mind](https://www.polygonalmind.com), released under Creative Commons Zero (CC0 1.0, public domain). Found through the [Open Source 3D Assets](https://github.com/toxsam/open-source-3D-assets) registry and taken from https://github.com/ToxSam/cc0-models-Polygonal-Mind:
+
+- `medieval-fair`: `Booth_Food02`, `Booth_Pretzelgame`, `Booth_Wearables`, `Table_Dinner`, `Barrel_Beer_Mountain`, `SmallBarrel_Art`
+- `ca-world`: `Stool_01`
+
+Changes: merged into one file, normal/roughness maps removed, colour textures shrunk to 256 px WebP, and geometry quantized (with gltf-transform). No attribution is required; credited here anyway.
+

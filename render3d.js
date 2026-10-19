@@ -10,6 +10,7 @@
 // proper CC0 character models are added (see README, "3D view").
 
 import * as THREE from './vendor/three/three.module.min.js';
+import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
 
 const S = 1 / TILE;
 const WALL_H = 2.4;
@@ -151,6 +152,7 @@ if (renderer) {
     if (world) {
       scene.remove(world);
       world.traverse((o) => {
+        if (o.userData.keep) return;   // shared with the loaded models
         if (o.geometry) o.geometry.dispose();
         const tex = o.material && !Array.isArray(o.material) && o.material.map;
         if (tex && tex !== wallTex && tex !== roofTex) tex.dispose();
@@ -223,12 +225,32 @@ if (renderer) {
       world.add(im);
     }
 
-    // Furniture (counters, tables, the stage, market stalls).
+    // Furniture (counters, tables, the stage, market stalls). Stalls use the CC0 market booths once
+    // models/props.glb has loaded; until then (or if it can't load) they are simple boxes.
+    let stallNo = 0;
     for (const pr of PROPS) {
       const st = PROP_STYLE[pr.kind] || PROP_STYLE.table;
       const h = Math.max(0.12, st.h * WALL_H);
       const g = new THREE.Group();
       g.position.set((pr.x + pr.w / 2) * S, 0, (pr.y + pr.h / 2) * S);
+      if (pr.kind === 'stall' && MODELS) {
+        const kind = /mask/i.test(pr.name || '') ? 'masks' : ['food', 'pretzel', 'masks'][stallNo++ % (pr.name ? 2 : 3)];
+        g.add(fitModel(kind, pr));
+        world.add(g);
+        continue;
+      }
+      if (pr.kind === 'counter' && MODELS) {   // kegs at both ends, on the side away from the room
+        const back = facing(pr) + Math.PI;
+        for (const sx of [-1, 1]) {
+          const k = place3d('keg', 1.0);
+          k.position.set(sx * (pr.w * S / 2 - 0.3), 0, 0);
+          k.position.x += Math.sin(back) * 0.75; k.position.z += Math.cos(back) * 0.75;
+          g.add(k);
+        }
+      }
+      if (pr.kind === 'table' && MODELS) {   // two stools pulled up to each table
+        for (const sx of [-1, 1]) { const st2 = place3d('stool', 0.42); st2.position.set(sx * 0.62, 0, 0.05 * sx); g.add(st2); }
+      }
       g.add(mesh(new THREE.BoxGeometry(pr.w * S, h, pr.h * S), [lambert(st.side), lambert(st.side), lambert(st.top), lambert(st.side), lambert(st.side), lambert(st.side)], 0, h / 2, 0));
       if (pr.kind === 'stall') {   // a striped awning on poles
         const aw = mesh(new THREE.BoxGeometry(pr.w * S + 0.2, 0.06, pr.h * S + 0.2), lambert(st.top), 0, 1.7, 0);
@@ -285,6 +307,61 @@ if (renderer) {
     for (const m of allMarks) { scene.remove(m); m.material.map.dispose(); }
     allCones.clear(); allMarks.clear();
     snapCamera = true;
+  }
+
+  // ---------- CC0 models (models/props.glb, Polygonal Mind, see THIRD_PARTY_NOTICES.md) ----------
+  // One file holds every model; each is a top-level node named for its job (food, pretzel, masks, table,
+  // stool, keg, barrel). Materials become simple Lambert ones to match the rest of the scene and stay cheap.
+  let MODELS = null;
+  const modelSize = {};
+  new GLTFLoader().load('models/props.glb', (gltf) => {
+    const found = {};
+    for (const node of [...gltf.scene.children]) {
+      node.traverse((o) => {
+        o.userData.keep = true;
+        if (!o.isMesh) return;
+        const m = o.material;
+        o.material = new THREE.MeshLambertMaterial({ map: m.map, color: m.color.clone().multiplyScalar(0.72), transparent: m.transparent, alphaTest: m.alphaTest, side: m.side });   // a little darker: it's night
+      });
+      const box = new THREE.Box3().setFromObject(node);
+      modelSize[node.name] = { size: box.getSize(new THREE.Vector3()), centre: box.getCenter(new THREE.Vector3()), min: box.min.clone() };
+      found[node.name] = node;
+    }
+    MODELS = found;
+    builtFor = null;   // rebuild the district with the models in
+  }, undefined, () => { /* no models: the boxes stay */ });
+  // A copy of a model standing on the ground at the origin, scaled to `height` units tall.
+  function place3d(name, height) {
+    const src = MODELS[name], sz = modelSize[name];
+    const k = height / sz.size.y;
+    const inner = src.clone(true);
+    inner.position.set(-sz.centre.x, -sz.min.y, -sz.centre.z);
+    const g = new THREE.Group();
+    g.add(inner);
+    g.scale.setScalar(k);
+    return g;
+  }
+  // Which way a prop's front faces: towards whichever long side has open street (radians, model +z = 0).
+  function facing(pr) {
+    const tx0 = Math.floor(pr.x / TILE), ty0 = Math.floor(pr.y / TILE), tx1 = Math.floor((pr.x + pr.w - 1) / TILE), ty1 = Math.floor((pr.y + pr.h - 1) / TILE);
+    const open = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H && !solidTile(grid[ty][tx]) && !FURN.has(ty * W + tx);
+    const count = (xs, ys) => { let n = 0; for (const ty of ys) for (const tx of xs) n += open(tx, ty) ? 1 : 0; return n; };
+    const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+    if (pr.w >= pr.h) return count(range(tx0, tx1), [ty1 + 1]) >= count(range(tx0, tx1), [ty0 - 1]) ? 0 : Math.PI;
+    return count([tx1 + 1], range(ty0, ty1)) >= count([tx0 - 1], range(ty0, ty1)) ? Math.PI / 2 : -Math.PI / 2;
+  }
+  // A market booth fitted to a stall's footprint: as wide as the stall, its front to the street,
+  // squeezed front-to-back so it never pokes out past the tiles ZAY collides with.
+  function fitModel(name, pr) {
+    const sz = modelSize[name].size;
+    const along = Math.max(pr.w, pr.h) * S, across = Math.min(pr.w, pr.h) * S;
+    const k = along / sz.x;
+    const g = place3d(name, sz.y * k);
+    g.scale.z = Math.min(k, across / sz.z);
+    const wrap = new THREE.Group();
+    wrap.add(g);
+    wrap.rotation.y = facing(pr);
+    return wrap;
   }
 
   // ---------- Figures (placeholders until CC0 models are added) ----------
