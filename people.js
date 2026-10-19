@@ -27,6 +27,7 @@ function presentNpcs() {
   return NPCS.filter((n) => {
     if (n.who !== 'severin') return true;
     if (state.jobsDone.has('veyrane-ledger') && !state.deeds.severinLedgerLine) return true;
+    if (state.jobsDone.has(COLLECTOR_JOB) && !state.deeds.severinCollectorLine) return true;
     return Math.random() < 0.6;
   });
 }
@@ -68,6 +69,8 @@ async function talkToNoe() {
     hudCache = '';
     return;
   }
+  const job2 = await noeCollectorJob();
+  if (job2) return;
   if (done) {
     return say('noe', pick([
       'Whatever you are outside, you behave inside. That includes you.',
@@ -96,9 +99,57 @@ async function talkToNoe() {
   }
 }
 
+// Job 2, after the ledger: Veyrane's collector and his forged claim. Returns true if Noe talked about it.
+async function noeCollectorJob() {
+  const d = state.deeds;
+  const J = COLLECTOR_JOB;
+  if (!d.reportedLedger || state.jobsDone.has(J)) return false;
+  if (d.hasClaim) {
+    await say('noe', 'What’s that?');
+    await say('zay', 'Three payments you “missed” this spring. In handwriting you’ve never seen.');
+    await say('noe', '…That’s not my hand. That’s not anyone’s hand.', 'Thank you, Zay. Again.', 'No casualties?');
+    await say('zay', 'Not even a bruise. He finds out at breakfast.');
+    state.jobsDone.add(J);
+    delete d.hasClaim;
+    addRep(8);
+    writeSave();
+    hudCache = '';
+    toast('Job complete: the collector’s satchel', 2600);
+    return true;
+  }
+  if (state.jobsTaken.has(J)) {
+    await say('noe', 'He walks the main street every night, satchel on his hip, two of Veyrane’s men beside him.', 'Don’t let them see you. And don’t hurt anyone.');
+    return true;
+  }
+  await say('noe',
+    'Veyrane sent a collector. Polite man. Says I missed three payments this spring.',
+    'He has papers to prove it. The papers are lies.',
+    'He drinks his way down the main street every night. Two of their men walk with him.');
+  const c = await choose('noe', 'If those papers went missing, his claim goes with them.', [
+    { text: 'Then they go missing.', value: 'yes' },
+    { text: 'Not tonight.', value: 'no' }
+  ]);
+  if (c === 'yes') {
+    state.jobsTaken.add(J);
+    writeSave();
+    hudCache = '';
+    await say('noe', 'From behind, Zay. They watch his satchel, not his back.');
+  } else {
+    await say('noe', 'He’ll still be there tomorrow. That’s the problem.');
+  }
+  return true;
+}
+
 // Severin never fights here and never threatens openly. He sits, and lets ZAY feel how far his reach goes.
 async function talkToSeverin() {
   const d = state.deeds;
+  if (state.jobsDone.has(COLLECTOR_JOB) && !d.severinCollectorLine) {
+    d.severinCollectorLine = true;
+    await say('severin', 'Veyrane’s collector had a poor night.');
+    await say('zay', 'Bellemorne’s full of thieves.');
+    await say('severin', 'It is now.');
+    return;
+  }
   if (state.jobsDone.has('veyrane-ledger') && !d.severinLedgerLine) {
     d.severinLedgerLine = true;
     await say('severin', 'House Veyrane misplaced something tonight.');

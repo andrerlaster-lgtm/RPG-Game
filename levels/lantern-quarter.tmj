@@ -11,7 +11,7 @@
  "type": "map",
  "version": "1.10",
  "nextlayerid": 3,
- "nextobjectid": 66,
+ "nextobjectid": 69,
  "properties": [
   {
    "name": "title",
@@ -2790,6 +2790,156 @@
        "name": "thanks",
        "type": "string",
        "value": "It\u2019s not much of a shrine. But it\u2019s ours. Thank you."
+      }
+     ]
+    },
+    {
+     "id": 66,
+     "name": "Veyrane collector",
+     "type": "walker",
+     "x": 192,
+     "y": 512,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 128,
+       "y": 0
+      },
+      {
+       "x": 256,
+       "y": 0
+      },
+      {
+       "x": 384,
+       "y": 0
+      },
+      {
+       "x": 512,
+       "y": 0
+      },
+      {
+       "x": 640,
+       "y": 0
+      },
+      {
+       "x": 768,
+       "y": 0
+      },
+      {
+       "x": 896,
+       "y": 0
+      },
+      {
+       "x": 1024,
+       "y": 0
+      },
+      {
+       "x": 1152,
+       "y": 0
+      },
+      {
+       "x": 1024,
+       "y": 0
+      },
+      {
+       "x": 896,
+       "y": 0
+      },
+      {
+       "x": 768,
+       "y": 0
+      },
+      {
+       "x": 640,
+       "y": 0
+      },
+      {
+       "x": 512,
+       "y": 0
+      },
+      {
+       "x": 384,
+       "y": 0
+      },
+      {
+       "x": 256,
+       "y": 0
+      },
+      {
+       "x": 128,
+       "y": 0
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "collector"
+      }
+     ]
+    },
+    {
+     "id": 67,
+     "name": "Escort",
+     "type": "guard",
+     "x": 192,
+     "y": 512,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "guard"
+      },
+      {
+       "name": "escort",
+       "type": "string",
+       "value": "collector"
+      }
+     ]
+    },
+    {
+     "id": 68,
+     "name": "Escort",
+     "type": "guard",
+     "x": 192,
+     "y": 512,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "polyline": [
+      {
+       "x": 0,
+       "y": 0
+      }
+     ],
+     "properties": [
+      {
+       "name": "kind",
+       "type": "string",
+       "value": "guard"
+      },
+      {
+       "name": "escort",
+       "type": "string",
+       "value": "collector"
       }
      ]
     }

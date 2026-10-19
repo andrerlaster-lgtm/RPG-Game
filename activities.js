@@ -23,9 +23,9 @@ NPC_LOOKS.locals = [
 
 // ---------- Passers-by ----------
 function makeWalkers() {
-  return WALKERS.map((w, i) => ({
-    ...w, who: w.kind === 'mark' ? 'mark' : 'local', x: w.pts[0].x, y: w.pts[0].y, r: 9, dir: 0,
-    ri: 1 % w.pts.length, path: [], pathT: 0, pathGoal: null, speed: 30 + (i % 3) * 6, robbed: false, startled: 0,
+  return WALKERS.filter((w) => w.kind !== 'collector' || collectorActive()).map((w, i) => ({
+    ...w, who: w.kind === 'local' ? 'local' : w.kind, x: w.pts[0].x, y: w.pts[0].y, r: 9, dir: 0,
+    ri: 1 % w.pts.length, path: [], pathT: 0, pathGoal: null, speed: w.kind === 'collector' ? 52 * 0.8 : 30 + (i % 3) * 6, robbed: false, startled: 0,
     isWalker: true
   }));
 }
@@ -59,6 +59,7 @@ function shoutForWatch(x, y) {
 function tryPickpocket(w) {
   const p = state.player;
   if (w.robbed) { toast('Pockets already empty.', 1100); return; }
+  if (w.kind === 'collector') return liftClaim(w);
   const noticed = !behind(w, p) || (p.lit && Math.random() < 0.25);
   if (noticed) {
     bark(w.kind === 'mark' ? 'Hey! Thief! Watch!' : 'Oi! Hands off!', w, 0, 2.4);
@@ -158,4 +159,33 @@ async function talkToNeedy(n) {
   play('coins');
   hudCache = '';
   await say(who, n.thanks || 'Bless you, Zay.');
+}
+
+// ---------- Job 2: the collector's satchel ----------
+// A Veyrane collector walks the main street with a forged "missed payments" claim against Noe, two of
+// House Veyrane's men beside him. Lift it from behind, out of their sight, and bring it to Noe.
+NPC_LOOKS.collector = { coat: '#26304d', low: '#141a2c', trim: '#e9b65a', sash: '#4a2e1c', skin: '#6a4430', hair: '#16141c', hairStyle: 'hat' };
+const COLLECTOR_JOB = 'collector-satchel';
+function collectorActive() {
+  return state.jobsTaken.has(COLLECTOR_JOB) && !state.jobsDone.has(COLLECTOR_JOB) && !state.deeds.hasClaim;
+}
+function liftClaim(w) {
+  const p = state.player;
+  const seenBy = state.guards.find((g) => g.escort && g.state !== 'down' && canSee(g, p));
+  const noticed = !behind(w, p) || seenBy || (p.lit && Math.random() < 0.35);
+  if (noticed) {
+    bark('Thief! Get him!', w, 0, 2.4);
+    w.startled = 2.5;
+    play('uiError');
+    for (const g of state.guards) if (g.escort && g.state !== 'down') { g.hostile = true; raiseAlarm(g); }
+    shoutForWatch(w.x, w.y);
+    return;
+  }
+  w.robbed = true;
+  state.deeds.hasClaim = true;
+  p.gold += 20;
+  play('cloth'); play('coins2', { vol: 0.6, delay: 0.1 });
+  toast('You lift the forged claim from his satchel (and 20 gold for the trouble).', 2600);
+  hudCache = '';
+  witnessCrime(p.x, p.y, null, 120, true);   // the escort missed it; only a watchman right there could see
 }

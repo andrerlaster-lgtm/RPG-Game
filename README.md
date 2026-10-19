@@ -77,6 +77,17 @@ The Lantern Quarter is lively, not poor (as the canon insists): a main street wi
 - Caught by the watch: "The city watch drags ZAY off to the Crown Quarter cells", and you go back to your last save.
 - Patrol routes are Tiled `guard` polylines with `kind` = `watch`.
 
+## Job 2: the collector's satchel
+
+After you've told Noe the ledger job is done, she has a second one. Veyrane sent a collector who says she missed three payments this spring; he has papers to prove it, and the papers are forged.
+
+1. Agree, and the **collector** appears on the Lantern Quarter's main street, walking it every night with **two of House Veyrane's men** at his sides.
+2. Like the watch, the escorts don't attack on sight in the city, but their vision cones show: every few seconds one of them glances back over his shoulder. Come up behind the collector between glances, ideally out of the lantern light, and **Lift** the forged claim (plus 20 gold).
+3. Grab from the front, or while an escort is looking, and it's "Thief! Get him!": the escorts and any watch in earshot come after you. Knocking an escort out in front of the other counts as a crime too.
+4. Bring the claim to Noe ("That's not my hand. That's not anyone's hand."). Job complete, +8 Name, and a new night begins. Severin has something to say about it on your next visit.
+
+- Tiled: the collector is a `walker` with `kind` = `collector`; his escorts are `guard`s with `escort` = `collector` (they walk in formation beside him, so their own route doesn't matter).
+
 ## Side activities in the Lantern Quarter
 
 - **Pickpocketing.** Passers-by walk the streets: well-off **Crown marks** (fine coats, gold trim, hats) and **locals** (Soot Quarter workers). Come up behind one and the prompt says **Lift**; press Use / E to take their purse. Marks carry more and lifting from them costs nothing: ZAY takes from people who can afford it. Lifting from a local costs 10 Name. Grab from the front and they shout "Thief!": every watchman within earshot comes running. In lantern light a mark sometimes notices even from behind, so work the shadows. A watchman standing close can also spot a clean lift.

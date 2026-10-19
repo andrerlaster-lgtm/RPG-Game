@@ -41,7 +41,8 @@ function resetDistrict() {
   state.coins = LEVEL.coins.map((c, i) => ({ ...c, taken: has(mem.coins, i) }));
   state.cardPickups = LEVEL.cards.map((c, i) => ({ ...c, taken: has(mem.cards, i) }));
   state.overhears = LEVEL.overhears.map((o) => ({ ...o, done: false }));
-  state.guards = GUARD_ROUTES.map(makeGuard);
+  state.guards = GUARD_ROUTES.filter((r) => !r.escort || collectorActive()).map(makeGuard);
+  state.guards.filter((g) => g.escort).forEach((g, i) => { g.side = i % 2 ? 1 : -1; });
   state.projectiles = [];
   state.effects = [];
   state.alarms = 0;
@@ -119,6 +120,17 @@ function objectiveInfo() {
   const taken = state.jobsTaken.has('veyrane-ledger');
   const reported = state.deeds.reportedLedger;
   const noe = () => (state.npcs || []).find((n) => n.who === 'noe') || null;
+  // Job 2: the collector's satchel (after the ledger is reported)
+  const J2 = COLLECTOR_JOB, j2taken = state.jobsTaken.has(J2), j2done = state.jobsDone.has(J2);
+  if (reported && !j2done && state.district !== 'crown-estate') {
+    if (state.deeds.hasClaim) return state.district === 'crooked-halo' ? { text: 'Give Noe the forged claim.', goal: noe() } : { text: 'Bring the forged claim to Noe at the Crooked Halo.', goal: exitTo('crooked-halo') };
+    if (j2taken) {
+      if (state.district === 'crooked-halo') return { text: 'Find Veyrane’s collector on the main street.', goal: exitTo('lantern') };
+      const c = (state.walkers || []).find((w) => w.kind === 'collector');
+      return { text: 'Lift the forged claim from the collector’s satchel. From behind, out of his escort’s sight.', goal: c || null };
+    }
+    return state.district === 'crooked-halo' ? { text: 'Noe has something else on her mind.', goal: noe() } : { text: 'Noe has something else on her mind. She’s at the Crooked Halo.', goal: exitTo('crooked-halo') };
+  }
   if (state.district === 'crooked-halo') {
     if (!taken && !done) return { text: 'Noe wants a word. She’s behind the bar.', goal: noe() };
     if (!done) return { text: "Head east to the Crown Quarter: House Veyrane's estate", goal: exitTo('lantern') };
