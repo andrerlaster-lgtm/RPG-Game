@@ -143,6 +143,8 @@ kbd { padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.1); fo
 .vis { padding: 3px 10px; border-radius: var(--radius-pill); background: rgba(13,16,36,.75); color: #9fb3d9; font-size: 13px; font-weight: 700; letter-spacing: .04em; }
 .vis.lit { background: rgba(233,182,90,.25); color: var(--color-primary-text); }
 .vis.hidden-state { background: rgba(60,120,80,.3); color: #a9e2b5; }
+.vis.rep-good { background: rgba(60,120,80,.3); color: #a9e2b5; }
+.vis.rep-bad { background: rgba(160,60,60,.3); color: #f0a9a9; }
 .hud-buttons { display: flex; gap: var(--space-2); margin-left: auto; }
 .objective { margin: var(--space-2) 0 0; font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--color-primary-text); text-shadow: 0 1px 3px #000; }
 .hp-meter { display: flex; align-items: center; gap: var(--space-2); font-weight: 700; text-shadow: 0 1px 2px #000; }

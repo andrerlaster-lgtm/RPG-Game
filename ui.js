@@ -128,6 +128,7 @@ const TIPS = {
   gold: ['Gold', "Picked up or stolen. Give it to the Soot kid on the dock before you leave."],
   cards: ['Cards', 'Throw one (Q) to make noise and lure guards away. A direct hit stuns them.'],
   vis: ['Visibility', 'Shadow: guards spot you only up close. In the light: from much farther. Hidden: hedges keep you out of sight.'],
+  rep: ['Name', 'How the Lantern Quarter sees ZAY. Kindness lowers prices at the fence. Cruelty raises them, and the worst name gets you turned away.'],
   bag: ['Bag (I)', 'Items, gear and ZAY’s stats. A red badge means something new.'],
   pause: ['Pause (Esc)', 'Pause, open Options, or restart the level.']
 };

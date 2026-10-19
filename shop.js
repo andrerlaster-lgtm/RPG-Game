@@ -17,7 +17,7 @@ const sui = {
 const sellPrice = (name) => Math.floor((ITEMS[name].price || 0) / 2);
 function shopRows() {
   if (SHOP.tab === 'buy') {
-    return SHOP_STOCK.map((name) => ({ name, price: ITEMS[name].price, owned: state.items[name] || 0, canAct: state.player.gold >= ITEMS[name].price }));
+    return SHOP_STOCK.map((name) => ({ name, price: buyPrice(name), owned: state.items[name] || 0, canAct: state.player.gold >= buyPrice(name) }));
   }
   return Object.entries(state.items)
     .filter(([name, n]) => n > 0 && ITEMS[name] && ITEMS[name].price > 0)
@@ -119,11 +119,36 @@ function renderShop() {
 sui.close.addEventListener('click', closeShop);
 
 async function talkToFence() {
-  const choice = await choose('fence', KID.helped
-    ? 'Blackwater prices, Zay. Heard you were generous tonight.'
-    : 'Blackwater prices, Zay. No questions, no names.', [
+  const tier = repTier();
+  if (tier.price === null) {
+    await say('fence', 'Not you, Zay. Not after what I’ve heard.', 'Keep walking.');
+    return;
+  }
+  const d = state.deeds;
+  const greeting = tier.label === 'Beloved' ? 'Zay! The whole Quarter’s talking about you. Friend prices tonight.'
+    : tier.label === 'Distrusted' ? 'Prices went up, Zay. Word gets around.'
+    : KID.helped ? 'Blackwater prices, Zay. Heard you were generous tonight.'
+    : 'Blackwater prices, Zay. No questions, no names.';
+  const choice = await choose('fence', greeting, [
     { text: 'Show me what you have.', value: 'shop' },
+    ...(!d.tippedFence && state.player.gold >= 20 ? [{ text: 'Keep the change for the trouble. (tip 20 gold)', value: 'tip' }] : []),
+    ...(!d.tookShelf ? [{ text: 'Take a Potion off the shelf while he looks away.', value: 'steal' }] : []),
     { text: 'Just passing through.', value: 'no' }
   ]);
   if (choice === 'shop') openShop();
+  else if (choice === 'tip') {
+    state.player.gold -= 20;
+    d.tippedFence = true;
+    play('coins');
+    addRep(8);
+    hudCache = '';
+    await say('fence', 'Huh. Nobody tips me. Remember I said that.');
+  } else if (choice === 'steal') {
+    d.tookShelf = true;
+    state.items.Potion = (state.items.Potion || 0) + 1;
+    noteNewItem('Potion');
+    play('cloth');
+    addRep(-20);
+    await say('fence', '...I saw that, Zay.');
+  }
 }

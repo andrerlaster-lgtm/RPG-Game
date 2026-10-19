@@ -214,6 +214,8 @@ function newState() {
     items: { ...STARTING_BAG },
     chests: LEVEL.chests.map((c) => ({ ...c, opened: false })),
     battles: 0,
+    rep: 0,
+    deeds: {},
     stolen: [],
     newItems: new Set(),
     time: 0,
@@ -1083,7 +1085,7 @@ function drawObjectiveArrow() {
 // ---------- HUD ----------
 const hudEls = {
   hud: document.getElementById('hud'), hpFill: document.getElementById('hp-fill'), hpText: document.getElementById('hp-text'), gold: document.getElementById('gold'),
-  cards: document.getElementById('cards'), vis: document.getElementById('vis'), objective: document.getElementById('objective')
+  cards: document.getElementById('cards'), vis: document.getElementById('vis'), rep: document.getElementById('rep'), objective: document.getElementById('objective')
 };
 let hudCache = '';
 function updateHud() {
@@ -1092,7 +1094,8 @@ function updateHud() {
   const objective = !state.ledgerTaken ? "Steal the ledger from House Veyrane's counting house"
     : KID.helped ? 'Reach the river boat' : 'Reach the river boat · give your coin to the kid on the dock';
   const lead = state.party[0];
-  const key = [lead.hp, p.gold, p.cards, vis, objective].join('|');
+  const tier = repTier();
+  const key = [lead.hp, p.gold, p.cards, vis, objective, tier.label].join('|');
   if (key === hudCache) return;
   hudCache = key;
   hudEls.hpFill.style.transform = `scaleX(${lead.hp / lead.maxHp})`;
@@ -1101,6 +1104,8 @@ function updateHud() {
   hudEls.cards.textContent = p.cards;
   hudEls.vis.textContent = vis;
   hudEls.vis.className = 'vis' + (p.lit ? ' lit' : p.hidden ? ' hidden-state' : '');
+  hudEls.rep.textContent = tier.label;
+  hudEls.rep.className = 'vis hud-tip' + (tier.mood ? ' rep-' + tier.mood : '');
   hudEls.objective.textContent = objective;
 }
 
@@ -1132,6 +1137,7 @@ function finish(won) {
     ['Guards knocked out', state.kos],
     ['Casualties', '0 · the code held'],
     ['Gold given away', p.given],
+    ['Name in the Quarter', repTier().label],
     ['Gold kept', p.gold]
   ];
   document.getElementById('end-stats').innerHTML = stats.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
