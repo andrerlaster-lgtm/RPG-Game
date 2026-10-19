@@ -58,15 +58,25 @@ Your end rating depends on how often you were spotted and how many guards you kn
 
 The bag uses larger item slots and separate character and item details, with a scrollable layout on smaller screens. Battle commands, opponents and party status have separate panels so target selection stays visible.
 
+## Districts
+
+Bellemorne is split into districts you walk between. A new game starts in the **Lantern Quarter** outside the Crooked Halo; walk east down the main street to reach the **Crown Quarter** (House Veyrane's estate, the ledger job). The estate's west gate leads back.
+
+- Your character comes with you: gold, items, gear, level, Name and finished jobs. Each district remembers its opened chests and picked-up coins and cards; guards reset on every visit.
+- You can't leave a district while guards are chasing you.
+- Finishing the ledger job shows the job summary, then sends you back to the Lantern Quarter by the Crooked Halo. Coming back to the estate afterwards is quiet: the ledger is gone.
+- The Lantern Quarter map is a first pass (streets, lamps, the Crooked Halo marked) built to test travel. Its people, the city watch and side activities come next, following the Master Canon (four quarters: Crown, Lantern, River, Soot).
+- Districts are listed in `districts.js`; to add one, add a map in `levels/`, list it there, and connect it with `exit` and `spawn` objects.
+
 ## Saved game
 
-Progress is saved in this browser on this device only (nothing is sent anywhere). It is written each time you complete a job; getting caught does not save, so the next try starts from your last save.
+Progress is saved in this browser on this device only (nothing is sent anywhere). It is written when you start a new game, each time you enter a district and when you complete a job; getting caught does not save, so the next try starts from where you last entered the district.
 
 - **Saved:** gold, cards, items, equipped gear, ZAY's level, EXP and stats, your Name and the choices behind it, whether you helped the Soot kid, and finished jobs. HP and MP start full when you continue.
 - **Title screen:** with a save you get **Continue** (with a one-line summary) and **New game**, which asks before erasing the save.
 - **Restart level** (pause menu) goes back to your last save if there is one.
 - Clearing the browser's site data, or a private window, means no save. The code is in `save.js`.
-- For now there is one job, so Continue replays the Veyrane heist with your saved character. Districts and the city come next.
+- Continue puts you back where you were saved.
 
 ## Your Name in the Quarter (good and bad)
 
@@ -87,7 +97,7 @@ To swap a sound, replace the matching file in `audio/` (same name) or change the
 
 ## Editing the level in Tiled
 
-The map is `levels/paper-thief.tmj`, a [Tiled](https://www.mapeditor.org/) map (Tiled is installed in Applications). Open it in Tiled, edit, save, and reload the game.
+Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lantern-quarter.tmj`, `paper-thief.tmj` for the Veyrane estate) (Tiled is installed in Applications). Open it in Tiled, edit, save, and reload the game.
 
 - **ground** (tile layer): building, street, garden, hedge (hides ZAY), floor, river, dock. Paint with the `bellemorne-tiles` tileset.
 - **objects** (object layer). Set each object's **Class** to one of:
@@ -97,6 +107,9 @@ The map is `levels/paper-thief.tmj`, a [Tiled](https://www.mapeditor.org/) map (
   - `coin` — property `gold`; `cards` — property `count`
   - `ledger`, `kid`, `boat` — the objective, the Soot kid, the escape boat
   - `vault` — draw a 2-point line across a 1-tile wall where ZAY can tail-vault
+  - `exit` — a rectangle; walking into it loads another district. Properties `to` (district id from `districts.js`) and `spawn` (spawn name there)
+  - `spawn` — a named arrival point (the object's name); `start` is also a spawn
+  - `label` — a place name painted on the map (the object's name is the text)
   - `guard` — draw a polyline for the patrol route; property `kind` = `guard` or `captain`
 
 ## 2.5D look
@@ -141,6 +154,7 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `audio/` — Kenney CC0 sounds (AAC)
 - `levels/` — the Tiled map, tileset and tileset image
 - `ui.js` — settings and Options, confirm dialog, HUD tooltips, new-item badge
+- `districts.js` — the district list, travel between maps, objectives and map labels
 - `save.js` — saved game (this device only): what is saved, loading and the title summary
 - `reputation.js` — the Name score, its tiers and the fence price rule
 - `characters.js` — classes, party, spells, item database, equipment, levels, enemies

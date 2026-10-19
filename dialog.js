@@ -210,7 +210,7 @@ async function openingScene() {
     'House Veyrane steals with paper. Tonight, I steal it back.',
     "Noe's contract is somewhere in their counting house. Get in, get the ledger, get to the river.",
     'And nobody gets hurt. Guild code.');
-  toast('Veyrane’s estate is north-east, past the lanterns.', 2600);
+  toast('House Veyrane’s estate is in the Crown Quarter, east down this street.', 2800);
 }
 
 async function ledgerScene() {
