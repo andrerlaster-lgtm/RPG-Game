@@ -113,7 +113,7 @@ function buildLevel(map) {
     for (let ty = Math.floor(pr.y / TILE); ty <= Math.floor((pr.y + pr.h - 1) / TILE); ty++)
       for (let tx = Math.floor(pr.x / TILE); tx <= Math.floor((pr.x + pr.w - 1) / TILE); tx++) FURN.add(ty * W + tx);
   }
-  GUARD_ROUTES = of('guard').map((o) => ({ kind: prop(o, 'kind', 'guard'), pts: line(o) }));
+  GUARD_ROUTES = of('guard').map((o) => ({ kind: prop(o, 'kind', 'guard'), pts: line(o), escort: prop(o, 'escort', '') }));
   renderMap();
 }
 
@@ -253,7 +253,7 @@ function makeGuard(route) {
     x: pts[0].x, y: pts[0].y, r: 11, dir: 0, route: pts, ri: 1 % pts.length,
     state: 'patrol', meter: 0, hp: 3, path: [], pathT: 0, pathGoal: null, target: null,
     lostT: 0, lookT: 0, attackCd: 0, windup: 0, stunT: 0, seenBodies: new Set(), speed: 52,
-    watch: route.kind === 'watch', hostile: false
+    watch: route.kind === 'watch', escort: !!route.escort, hostile: false
   };
 }
 function newState() {
@@ -545,8 +545,10 @@ function use() {
     const d = dist(g, p);
     if (d < 40 && (behind(g, p) || g.state === 'stunned') && (!best || d < dist(best, p))) best = g;
   }
+  // 1b. Lift a purse from a passer-by (wins over a takedown when they're the closer of the two)
+  const lift = walkerNear(p);
+  if (lift && !lift.robbed && behind(lift, p) && (!best || dist(lift, p) <= dist(best, p))) { tryPickpocket(lift); return; }
   if (best) { knockOut(best, true); return; }
-  // 1b. Lift a purse from a passer-by
   // (from the front it's a clumsy grab and they shout; skip it if you're clearly here to talk to someone else)
   const mark = walkerNear(p);
   const otherNear = npcNear(p) || dist(KID, p) < 44 || dist(FENCE, p) < 44;
@@ -598,11 +600,12 @@ function use() {
 }
 
 // A crime in front of the city watch: any watchman who can see ZAY or the spot turns hostile.
-function witnessCrime(x, y, victim = null, radius = 230) {
+// watchOnly: a quiet crime (a clean lift) that only a close city watchman could spot.
+function witnessCrime(x, y, victim = null, radius = 230, watchOnly = false) {
   const p = state.player;
   let seen = false;
   for (const g of state.guards) {
-    if (!g.watch || g.state === 'down' || g.hostile) continue;
+    if (!(g.watch || (g.escort && !watchOnly)) || g.state === 'down' || g.hostile) continue;
     const sees = (q) => dist(g, q) < radius && lineOfSight(g.x, g.y, q.x, q.y);
     if (g === victim || sees(p) || sees({ x, y })) {
       g.hostile = true;
@@ -732,10 +735,24 @@ function updateGuard(g, dt) {
     return;
   }
 
-  // The city watch ignores ZAY until someone sees him commit a crime (see witnessCrime).
-  if (g.watch && !g.hostile && g.state !== 'alert') {
+  // The city watch (and a collector's escort) ignore ZAY until someone sees him commit a crime (see witnessCrime).
+  if ((g.watch || g.escort) && !g.hostile && g.state !== 'alert') {
     g.state = 'patrol';
     g.meter = 0;
+    // An escort keeps formation at the collector's side, facing the way he walks.
+    const c = g.escort && (state.walkers || []).find((w) => w.kind === 'collector');
+    if (c) {
+      const a = c.dir + (g.side || 1) * Math.PI / 2;
+      const lead = 6;   // aim a little ahead so they walk level with him instead of trailing
+      const tx = c.x + Math.cos(a) * 18 + Math.cos(c.dir) * lead, ty = c.y + Math.sin(a) * 18 + Math.sin(c.dir) * lead;
+      move(g, (tx - g.x) * Math.min(1, dt * 14), (ty - g.y) * Math.min(1, dt * 14));
+      // Every few seconds each escort glances back over his shoulder (watch the cone, time the lift).
+      g.glanceT = (g.glanceT ?? (g.side > 0 ? 2.2 : 4.4)) - dt;
+      if (g.glanceT < -1.3) g.glanceT = 3.2 + Math.random() * 2;
+      const back = g.glanceT < 0;
+      turnTo(g, back ? c.dir + Math.PI : c.dir, dt, 9);
+      return;
+    }
     if (walkTo(g, g.route[g.ri], g.speed * 0.8, dt)) g.ri = (g.ri + 1) % g.route.length;
     return;
   }
