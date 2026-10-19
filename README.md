@@ -14,8 +14,8 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 
 | Action | Keyboard / mouse | Touch | Controller |
 |---|---|---|---|
-| Move (3D view) | ↑ walk forward, ↓ step back, ← → turn | Arrow pad, same | D-pad or left stick, same |
-| Move (Classic view) | Arrow keys | Arrow pad | D-pad or left stick |
+| Move (3D view) | ↑ walk forward, ↓ step back, ← → turn | Wheel: push up to walk, sideways to turn, down to step back (push further to go faster) | D-pad or left stick, same as keys |
+| Move (Classic view) | Arrow keys | Wheel: ZAY walks the way you push | D-pad or left stick |
 | Sprint (noisy) | Shift | Hold Sprint | Hold LB or RB |
 | Takedown from behind, tail-vault the estate wall, grab the ledger, give coin | E | Use | A |
 | Throw a card (noise lure; stuns on a direct hit) | Q or right-click (3D: straight ahead; Classic: aims at the cursor) | Card (throws where you face) | X |

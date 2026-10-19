@@ -352,7 +352,36 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 document.querySelectorAll('[data-act]').forEach((b) => {
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); pressed.add('touch-' + b.dataset.act); });
 });
-// Arrow pad and Sprint: held buttons behave like held keys.
+// The touch wheel: drag the knob; how far you push sets how fast ZAY moves (stick.x / stick.y, -1..1).
+const stick = { x: 0, y: 0, on: false };
+const stickEl = document.getElementById('stick');
+const knobEl = stickEl.querySelector('.stick-knob');
+function stickAt(e) {
+  const r = stickEl.getBoundingClientRect();
+  const max = r.width * 0.32;
+  let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const d = Math.hypot(dx, dy);
+  if (d > max) { dx *= max / d; dy *= max / d; }
+  stick.x = dx / max; stick.y = dy / max;
+  knobEl.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+function stickRelease() {
+  stick.on = false; stick.x = stick.y = 0;
+  knobEl.style.transform = '';
+  stickEl.classList.remove('is-held');
+}
+stickEl.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  try { stickEl.setPointerCapture(e.pointerId); } catch { /* keep working without capture */ }
+  stick.on = true;
+  stickEl.classList.add('is-held');
+  stickAt(e);
+});
+stickEl.addEventListener('pointermove', (e) => { if (stick.on) stickAt(e); });
+stickEl.addEventListener('pointerup', stickRelease);
+stickEl.addEventListener('pointercancel', stickRelease);
+stickEl.addEventListener('lostpointercapture', stickRelease);
+// Sprint: a held button behaves like a held key.
 document.querySelectorAll('[data-key], [data-hold]').forEach((b) => {
   const key = b.dataset.key || b.dataset.hold;
   const release = () => { keys.delete(key); b.classList.remove('is-held'); };
@@ -467,13 +496,19 @@ const TURN_RATE = 3;   // radians a second, turning in the 3D view
 function updatePlayer(dt) {
   const p = state.player;
   let mx = 0, my = 0;
+  const wheel = stick.on && Math.hypot(stick.x, stick.y) > 0.15;
   if (use3D()) {
     // Third person: Left/Right turn ZAY, Up walks forward, Down steps back.
-    const turn = (keys.has('arrowright') ? 1 : 0) - (keys.has('arrowleft') ? 1 : 0);
+    // The wheel works the same way: push up to walk, sideways to turn, both to walk round a corner.
+    const turn = wheel ? Math.sign(stick.x) * Math.max(0, Math.abs(stick.x) - 0.15) / 0.85
+      : (keys.has('arrowright') ? 1 : 0) - (keys.has('arrowleft') ? 1 : 0);
     p.dir += turn * TURN_RATE * dt;
-    const fwd = (keys.has('arrowup') ? 1 : 0) - (keys.has('arrowdown') ? 0.6 : 0);
+    const fwd = wheel ? (stick.y < 0 ? -stick.y : -stick.y * 0.6) * (Math.abs(stick.y) > 0.2 ? 1 : 0)
+      : (keys.has('arrowup') ? 1 : 0) - (keys.has('arrowdown') ? 0.6 : 0);
     mx = Math.cos(p.dir) * fwd;
     my = Math.sin(p.dir) * fwd;
+  } else if (wheel) {
+    mx = stick.x; my = stick.y;
   } else {
     if (keys.has('arrowup')) my -= 1;
     if (keys.has('arrowdown')) my += 1;
