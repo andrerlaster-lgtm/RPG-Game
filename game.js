@@ -119,13 +119,17 @@ const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 214
 
 // ---------- Pre-rendered map ----------
 const mapCanvas = document.createElement('canvas');
-const WINDOWS = [];
+const roofCanvas = document.createElement('canvas');
+const EDGES = [];   // building walls: {x0, y0, x1, y1, side, win}
+const SHADOWS = [];
 function renderMap() {
   seed = 7;
-  WINDOWS.length = 0;
-  mapCanvas.width = W * TILE;
-  mapCanvas.height = H * TILE;
+  EDGES.length = 0;
+  SHADOWS.length = 0;
+  mapCanvas.width = roofCanvas.width = W * TILE;
+  mapCanvas.height = roofCanvas.height = H * TILE;
   const m = mapCanvas.getContext('2d');
+  const r = roofCanvas.getContext('2d');
   for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
     const t = grid[ty][tx];
     const x = tx * TILE, y = ty * TILE;
@@ -164,33 +168,46 @@ function renderMap() {
       m.fillStyle = '#0b1729';
       m.fillRect(x, y, TILE, TILE);
     } else {
-      // Rooftops: slate with ridges, gold trim where they meet the street.
-      const v = 11 + Math.floor(rand() * 5);
-      m.fillStyle = `rgb(${v + 4},${v},${v + 12})`;
+      // Building footprint. The ground here is only seen through gaps; walls and the roof are
+      // drawn every frame by drawBuildings() so they can lean with the camera.
+      m.fillStyle = '#0d0b12';
       m.fillRect(x, y, TILE, TILE);
-      m.fillStyle = 'rgba(255,255,255,.025)';
-      m.fillRect(x, y + (tx + ty) % 3 * 8, TILE, 2);
-      const below = ty + 1 < H ? grid[ty + 1][tx] : '#';
-      if (below !== '#' && below !== 'w') {
-        // Façade facing the viewer: brick band, balcony rail, maybe a lit window.
-        m.fillStyle = '#3a2c35';
-        m.fillRect(x, y + TILE - 14, TILE, 14);
-        m.fillStyle = '#8a6a33';
-        m.fillRect(x, y + TILE - 15, TILE, 2);
-        if (rand() < 0.55) WINDOWS.push({ x: x + 8 + rand() * 10, y: y + TILE - 11, w: 8, h: 8 });
-        else { m.fillStyle = '#1d161c'; m.fillRect(x + 11, y + TILE - 12, 10, 12); }
-      }
-      for (const [dx, dy] of [[1,0],[-1,0],[0,-1]]) {
+      const v = 30 + Math.floor(rand() * 6);
+      r.fillStyle = `rgb(${v + 6},${v},${v + 14})`;
+      r.fillRect(x, y, TILE, TILE);
+      r.fillStyle = 'rgba(255,255,255,.05)';
+      for (let k = 0; k < 4; k++) r.fillRect(x, y + k * 8 + 6, TILE, 1);   // slate rows
+      r.fillStyle = 'rgba(0,0,0,.18)';
+      r.fillRect(x, y + (tx + ty) % 3 * 8, TILE, 2);
+      for (const [dx, dy, side] of [[0, 1, 's'], [1, 0, 'e'], [-1, 0, 'w'], [0, -1, 'n']]) {
         const n = grid[ty + dy] && grid[ty + dy][tx + dx];
-        if (n && n !== '#' && n !== 'w') {
-          m.fillStyle = '#6d5326';
-          if (dx === 1) m.fillRect(x + TILE - 2, y, 2, TILE);
-          if (dx === -1) m.fillRect(x, y, 2, TILE);
-          if (dy === -1) m.fillRect(x, y, TILE, 2);
-        }
+        if (!n || n === '#') continue;
+        // Gold trim along the roof edge.
+        r.fillStyle = '#6d5326';
+        if (side === 'e') r.fillRect(x + TILE - 2, y, 2, TILE);
+        if (side === 'w') r.fillRect(x, y, 2, TILE);
+        if (side === 'n') r.fillRect(x, y, TILE, 2);
+        if (side === 's') { r.fillRect(x, y + TILE - 3, TILE, 3); r.fillStyle = 'rgba(255,230,170,.35)'; r.fillRect(x, y + TILE - 3, TILE, 1); }
+        // The wall below that edge, with a window (lit or shuttered) on street-facing sides.
+        const e = side === 's' ? { x0: x, y0: y + TILE, x1: x + TILE, y1: y + TILE }
+          : side === 'n' ? { x0: x, y0: y, x1: x + TILE, y1: y }
+          : side === 'e' ? { x0: x + TILE, y0: y, x1: x + TILE, y1: y + TILE }
+          : { x0: x, y0: y, x1: x, y1: y + TILE };
+        e.side = side;
+        e.win = rand() < (side === 's' ? 0.75 : 0.45) ? { a: 0.25 + rand() * 0.25, lit: rand() < 0.65 } : null;
+        EDGES.push(e);
+        // Soft contact shadow on the ground where the wall meets it.
+        const g = side === 's' ? m.createLinearGradient(0, y + TILE, 0, y + TILE + 12)
+          : side === 'n' ? m.createLinearGradient(0, y, 0, y - 12)
+          : side === 'e' ? m.createLinearGradient(x + TILE, 0, x + TILE + 12, 0)
+          : m.createLinearGradient(x, 0, x - 12, 0);
+        g.addColorStop(0, 'rgba(0,0,0,.42)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        SHADOWS.push({ g, rect: side === 's' ? [x, y + TILE, TILE, 12] : side === 'n' ? [x, y - 12, TILE, 12] : side === 'e' ? [x + TILE, y, 12, TILE] : [x - 12, y, 12, TILE] });
       }
     }
   }
+  for (const sh of SHADOWS) { m.fillStyle = sh.g; m.fillRect(...sh.rect); }
   // Hedges drawn as round bushes on top of the garden.
   for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
     if (grid[ty][tx] !== 'h') continue;
@@ -748,6 +765,95 @@ function updateCamera(dt = 0, snap = false) {
 const camLeft = () => camX + shakeX, camTop = () => camY + shakeY;
 const inView = (x, y, m = 160) => x > camX - m && y > camY - m && x < camX + vw / zoom + m && y < camY + vh / zoom + m;
 
+// ---------- 2.5D buildings ----------
+// A simple 2.5D trick: the camera is tilted, so a roof is drawn a little higher up the screen (ROOF_TILT)
+// and scaled up around the point the camera looks at (ROOF_LIFT), so tall things also lean away from
+// the centre of the screen. The walls in between show on the sides facing the camera.
+const ROOF_LIFT = 0.05;    // perspective lean (0 = none)
+const ROOF_TILT = 22;      // how far a roof sits above its footprint on screen, in pixels
+const LAMP_LIFT = 0.025;   // lamp heads sit lower than rooftops
+let focusX = 0, focusY = 0;
+function updateFocus() {
+  const controls = isTouch ? (vh * 0.34) / zoom : 0;
+  focusX = camLeft() + vw / zoom / 2;
+  focusY = camTop() + (vh / zoom - controls) / 2;
+}
+const liftX = (x, k = ROOF_LIFT) => focusX + (x - focusX) * (1 + k);
+const liftY = (y, k = ROOF_LIFT) => focusY + (y - focusY) * (1 + k) - ROOF_TILT * (k / ROOF_LIFT);
+const WALL_COLOR = { s: '#7a5c68', e: '#5c4651', w: '#5c4651', n: '#43333c' };
+function edgeFacesCamera(e) {
+  return e.side === 's' ? liftY(e.y0) < e.y0 : e.side === 'n' ? liftY(e.y0) > e.y0 : e.side === 'e' ? liftX(e.x0) < e.x0 : liftX(e.x0) > e.x0;
+}
+// A point on a wall: t runs along the base edge (0..1), h is height up the wall (0 = ground, 1 = roof).
+function wallPoint(e, t, h) {
+  const bx = e.x0 + (e.x1 - e.x0) * t, by = e.y0 + (e.y1 - e.y0) * t;
+  return [bx + (liftX(bx) - bx) * h, by + (liftY(by) - by) * h];
+}
+function quad(c, pts) {
+  c.beginPath();
+  c.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+  c.closePath();
+  c.fill();
+}
+function wallHeight(e) { const [x, y] = wallPoint(e, 0.5, 1); return Math.hypot(x - (e.x0 + e.x1) / 2, y - (e.y0 + e.y1) / 2); }
+function windowQuad(e) {
+  const w = e.win, h0 = 0.3, h1 = 0.72;
+  return [wallPoint(e, w.a, h0), wallPoint(e, w.a + 0.25, h0), wallPoint(e, w.a + 0.25, h1), wallPoint(e, w.a, h1)];
+}
+function drawBuildings() {
+  const visible = EDGES.filter((e) => inView(e.x0, e.y0, 60) && edgeFacesCamera(e));
+  // Farthest walls first so nearer ones overlap them.
+  visible.sort((a, b) => Math.hypot(b.x0 - focusX, b.y0 - focusY) - Math.hypot(a.x0 - focusX, a.y0 - focusY));
+  for (const e of visible) {
+    const [bx, by] = wallPoint(e, 0.5, 0), [tx, ty] = wallPoint(e, 0.5, 1);
+    const shade = ctx.createLinearGradient(bx, by, tx, ty);
+    shade.addColorStop(0, '#17121a');
+    shade.addColorStop(1, WALL_COLOR[e.side]);
+    ctx.fillStyle = shade;
+    quad(ctx, [wallPoint(e, 0, 0), wallPoint(e, 1, 0), wallPoint(e, 1, 1), wallPoint(e, 0, 1)]);
+    ctx.fillStyle = 'rgba(0,0,0,.28)';   // darker foundation band
+    quad(ctx, [wallPoint(e, 0, 0), wallPoint(e, 1, 0), wallPoint(e, 1, 0.18), wallPoint(e, 0, 0.18)]);
+    ctx.fillStyle = 'rgba(138,106,51,.8)'; // balcony rail under the roof
+    quad(ctx, [wallPoint(e, 0, 0.86), wallPoint(e, 1, 0.86), wallPoint(e, 1, 0.92), wallPoint(e, 0, 0.92)]);
+    if (e.win && !e.win.lit && wallHeight(e) > 14) { ctx.fillStyle = '#1d161c'; quad(ctx, windowQuad(e)); }
+  }
+  // Roofs: the roof layer drawn scaled up around the focus point (only the visible part).
+  const S = 1 + ROOF_LIFT;
+  const viewW = vw / zoom, viewH = vh / zoom;
+  const sx = Math.max(0, focusX + (camLeft() - focusX) / S - 8), sy = Math.max(0, focusY + (camTop() + ROOF_TILT - focusY) / S - 8);
+  const sw = Math.min(roofCanvas.width - sx, viewW / S + 16), sh = Math.min(roofCanvas.height - sy, viewH / S + 16);
+  if (sw <= 0 || sh <= 0) return;
+  ctx.save();
+  ctx.translate(focusX, focusY - ROOF_TILT);
+  ctx.scale(S, S);
+  ctx.translate(-focusX, -focusY);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(roofCanvas, sx, sy, sw, sh, sx, sy, sw, sh);
+  ctx.restore();
+}
+// Is this ground point hidden under a drawn roof? (Inverse of the roof transform, then a tile lookup.)
+function underRoof(x, y) {
+  const S = 1 + ROOF_LIFT;
+  return tileAt(focusX + (x - focusX) / S, focusY + (y + ROOF_TILT - focusY) / S) === '#' && tileAt(x, y) !== '#';
+}
+// Faint see-through outlines for anyone a roof is covering, so stealth stays readable.
+function drawXray() {
+  ctx.save();
+  ctx.globalAlpha = 0.4;
+  for (const g of state.guards) if (g.state !== 'down' && inView(g.x, g.y) && underRoof(g.x, g.y)) drawGuard(g);
+  const p = state.player;
+  if (underRoof(p.x, p.y)) drawPlayer();
+  ctx.restore();
+}
+function drawLitWindows() {
+  for (const e of EDGES) {
+    if (!e.win || !e.win.lit || !inView(e.x0, e.y0, 60) || !edgeFacesCamera(e) || wallHeight(e) <= 14) continue;
+    ctx.fillStyle = 'rgba(240,190,110,0.78)';
+    quad(ctx, windowQuad(e));
+  }
+}
+
 function render() {
   const s = dpr * zoom;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -764,6 +870,9 @@ function render() {
   for (const g of state.guards) if (inView(g.x, g.y)) drawGuard(g);
   drawPlayer();
   for (const c of state.projectiles) drawCard(c.x, c.y, c.spin);
+  updateFocus();
+  drawBuildings();
+  drawXray();
 
   // Darkness with light cut-outs
   dctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -792,7 +901,7 @@ function render() {
   ctx.globalCompositeOperation = 'lighter';
   for (const l of LAMPS) if (inView(l.x, l.y, l.r)) glow(l.x, l.y, l.r * 0.85, 'rgba(233,170,80,0.2)', l.poly);
   ctx.globalCompositeOperation = 'source-over';
-  for (const w of WINDOWS) if (inView(w.x, w.y, 40)) { ctx.fillStyle = 'rgba(240,190,110,0.78)'; ctx.fillRect(w.x, w.y, w.w, w.h); ctx.fillStyle = 'rgba(60,35,20,.9)'; ctx.fillRect(w.x + 3.5, w.y, 1, w.h); }
+  drawLitWindows();
   for (const l of LAMPS) if (inView(l.x, l.y, 40)) drawLamp(l.x, l.y);
   drawEffects();
   drawBarks();
@@ -825,10 +934,17 @@ function glow(x, y, r, color, poly) {
   ctx.fill();
 }
 function drawLamp(x, y) {
+  // A post from the ground up to the lamp head, which leans with the camera like the rooftops.
+  const hx = liftX(x, LAMP_LIFT), hy = liftY(y, LAMP_LIFT);
+  ctx.fillStyle = 'rgba(0,0,0,.4)';
+  ctx.beginPath(); ctx.ellipse(x, y + 1, 4, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#121019';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(hx, hy); ctx.stroke();
   ctx.fillStyle = '#121019';
-  ctx.beginPath(); ctx.arc(x, y + 3, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(hx, hy + 3, 4, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#ffd88a';
-  ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(hx, hy, 3.2, 0, Math.PI * 2); ctx.fill();
 }
 function drawWater() {
   const t = state.time;
