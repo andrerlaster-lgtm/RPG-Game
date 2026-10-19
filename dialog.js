@@ -266,6 +266,7 @@ async function talkToKid() {
   if (choice === 'rob') {
     p.gold += 15;
     state.deeds.robbedKid = true;
+    witnessCrime(p.x, p.y);
     play('coins');
     addRep(-30);
     await say('kid', 'Zay... that was my whole week.');

@@ -125,7 +125,7 @@ confirmEl.addEventListener('click', (e) => { if (e.target === confirmEl) resolve
 // ---------- HUD tooltips (hover, keyboard focus, or long-press on touch) ----------
 const TIPS = {
   hp: ['Health', "ZAY's HP. It carries between battles. Potions and Hi-Potions restore it."],
-  gold: ['Gold', "Picked up or stolen. Give it to the Soot kid on the dock before you leave."],
+  gold: ['Gold', "Picked up or stolen. The Soot kid by the street stage in the Lantern Quarter could use it."],
   cards: ['Cards', 'Throw one (Q) to make noise and lure guards away. A direct hit stuns them.'],
   vis: ['Visibility', 'Shadow: guards spot you only up close. In the light: from much farther. Hidden: hedges keep you out of sight.'],
   rep: ['Name', 'How the Lantern Quarter sees ZAY. Kindness lowers prices at the fence. Cruelty raises them, and the worst name gets you turned away.'],

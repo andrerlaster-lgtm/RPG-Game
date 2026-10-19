@@ -135,6 +135,12 @@ const ENEMIES = {
     steal: [{ gold: 18 }, { gold: 12 }, { item: 'Potion' }, { item: 'Smoke Bomb' }],
     drops: [{ item: 'Potion', chance: 0.3 }, { item: 'Veyrane Baton', chance: 0.08 }]
   },
+  watch: {
+    name: 'City Watch', maxHp: 72, atk: 16, def: 5, mag: 2, spd: 9, exp: 40, gold: 9,
+    coat: '#4a2a24', trim: '#c98a3a',
+    steal: [{ gold: 22 }, { gold: 14 }, { item: 'Potion' }],
+    drops: [{ item: 'Potion', chance: 0.3 }]
+  },
   captain: {
     name: 'Estate Captain', maxHp: 96, atk: 19, def: 6, mag: 3, spd: 10, exp: 62, gold: 14,
     coat: '#3d2a4f', trim: '#e9b65a',

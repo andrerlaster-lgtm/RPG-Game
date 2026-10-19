@@ -8,7 +8,7 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 
 ## How to play
 
-- **Goal:** take the ledger from the Veyrane counting house, then reach the river boat at the east docks. Optional: give the coin you pick up (or steal) to the Soot kid on the dock.
+- **Goal:** take the ledger from the Veyrane counting house, then reach the river boat at the east docks. Optional: give the coin you pick up (or steal) to the Soot kid by the street stage in the Lantern Quarter.
 - **Stealth:** lantern light makes you easy to see; shadows halve how far guards can see you; garden hedges hide you. A ring over each guard fills while they can see you; when it's full they raise the alarm and nearby guards come running.
 - **No casualties:** every takedown and every battle win is a knockout.
 
@@ -65,8 +65,17 @@ Bellemorne is split into districts you walk between. A new game starts in the **
 - Your character comes with you: gold, items, gear, level, Name and finished jobs. Each district remembers its opened chests and picked-up coins and cards; guards reset on every visit.
 - You can't leave a district while guards are chasing you.
 - Finishing the ledger job shows the job summary, then sends you back to the Lantern Quarter by the Crooked Halo. Coming back to the estate afterwards is quiet: the ledger is gone.
-- The Lantern Quarter map is a first pass (streets, lamps, the Crooked Halo marked) built to test travel. Its people, the city watch and side activities come next, following the Master Canon (four quarters: Crown, Lantern, River, Soot).
+- Side activities (pickpocketing well-off marks, ZAY's card hustle, helping the Soot Quarter) and the River and Soot Quarters come next, following the Master Canon (four quarters: Crown, Lantern, River, Soot).
 - Districts are listed in `districts.js`; to add one, add a map in `levels/`, list it there, and connect it with `exit` and `spawn` objects.
+
+## The Lantern Quarter and the city watch
+
+The Lantern Quarter is lively, not poor (as the canon insists): a main street with food stalls and a mask stall, a square with a street stage, a music hall, a card room, a narrow cut through the card-room block, a side yard behind the mask shop, and the Crooked Halo. Vendors and a regular at the stage have a line each. The **Soot kid** now waits by the street stage (give or take coin there).
+
+- **The city watch** (reddish-brown coats) patrols the main street, the square and the south lane. They ignore ZAY, even in full lantern light, until a watchman sees a crime: a takedown, a card hitting someone, or shaking down the kid. Then "The watch saw that!", they raise the alarm, and it plays like the estate: chase, battle, knockout or get away.
+- Hostile watchmen stay hostile for the rest of that visit; leaving and coming back resets them.
+- Caught by the watch: "The city watch drags ZAY off to the Crown Quarter cells", and you go back to your last save.
+- Patrol routes are Tiled `guard` polylines with `kind` = `watch`.
 
 ## The Crooked Halo, Noe and Severin
 
@@ -125,8 +134,8 @@ Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lanter
   - `spawn` — a named arrival point (the object's name); `start` is also a spawn
   - `label` — a place name painted on the map (the object's name is the text)
   - `npc` — a person you can talk to (Use / E). Properties `who` (`noe`, `severin` or `patron`), `look` (patron style 0–3), `dir` (facing, in degrees), `line` (what a patron says), `reach` (talk distance, e.g. across the bar)
-  - `prop` — low, solid furniture drawn with a little height. Property `kind`: `counter`, `table` or `stage`
-  - `guard` — draw a polyline for the patrol route; property `kind` = `guard` or `captain`
+  - `prop` — low, solid furniture drawn with a little height. Property `kind`: `counter`, `table`, `stage` or `stall` (a striped awning)
+  - `guard` — draw a polyline for the patrol route; property `kind` = `guard`, `captain` or `watch` (the city watch: calm until it sees a crime)
 
 ## 2.5D look
 
