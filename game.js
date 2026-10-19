@@ -863,6 +863,7 @@ function render() {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(mapCanvas, 0, 0);
   ctx.imageSmoothingEnabled = true;
+  updateFocus();
 
   drawWater();
   drawProps();
@@ -870,7 +871,6 @@ function render() {
   for (const g of state.guards) if (inView(g.x, g.y)) drawGuard(g);
   drawPlayer();
   for (const c of state.projectiles) drawCard(c.x, c.y, c.spin);
-  updateFocus();
   drawBuildings();
   drawXray();
 
@@ -1070,6 +1070,30 @@ function drawCone(g) {
   ctx.closePath();
   ctx.fill();
 }
+// Characters stand up like the buildings (sprite stacking): a shadow at the feet, a stack of body
+// slices, and the detailed top-down figure on top, leaning with the same camera tilt.
+const CHAR_HEIGHT = 0.45;   // fraction of a building's height
+const STACK_SLICES = 6;
+function standUp(x, y, f = 1) {
+  return [(liftX(x) - x) * CHAR_HEIGHT * f, (liftY(y) - y) * CHAR_HEIGHT * f];
+}
+function drawStack(x, y, dir, rx, ry, low, high) {
+  for (let i = 0; i < STACK_SLICES; i++) {
+    const f = i / STACK_SLICES;
+    const [ox, oy] = standUp(x, y, f);
+    ctx.save();
+    ctx.translate(x + ox, y + oy);
+    ctx.rotate(dir);
+    ctx.fillStyle = f < 0.45 ? low : high;
+    ctx.beginPath(); ctx.ellipse(0, 0, rx * (f < 0.45 ? 0.8 : 1), ry * (f < 0.45 ? 0.75 : 1), 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+function feetShadow(x, y, r) {
+  ctx.fillStyle = 'rgba(0,0,0,.4)';
+  ctx.beginPath(); ctx.ellipse(x, y + 2, r, r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+}
+
 function drawGuard(g) {
   ctx.save();
   ctx.translate(g.x, g.y);
@@ -1082,11 +1106,16 @@ function drawGuard(g) {
     ctx.restore();
     return;
   }
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.beginPath(); ctx.ellipse(0, 6, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  feetShadow(g.x, g.y, 12);
+  drawStack(g.x, g.y, g.dir, 10, 12, '#141a2c', g.windup > 0 ? '#3e1a22' : '#1c2440');
+  const [gox, goy] = standUp(g.x, g.y);
+  ctx.save();
+  ctx.translate(g.x + gox, g.y + goy);
   ctx.rotate(g.dir);
   ctx.fillStyle = g.windup > 0 ? '#5a2430' : '#26304d';
   ctx.beginPath(); ctx.ellipse(0, 0, 10, 12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(170,180,220,.25)'; ctx.lineWidth = 1; ctx.stroke();
   ctx.fillStyle = '#b08a3e';
   ctx.fillRect(-3, -12, 6, 24);
   ctx.fillStyle = '#5a3b2b';
@@ -1099,18 +1128,18 @@ function drawGuard(g) {
 
   // Awareness marker
   if (g.meter > 0.05 || g.state === 'stunned') {
-    const y = g.y - 24;
+    const y = g.y + goy - 24;
     if (g.state === 'alert') {
       ctx.fillStyle = '#e2574c';
-      ctx.font = '800 16px Barlow, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('!', g.x, y + 5);
+      ctx.font = '800 16px Barlow, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('!', g.x + gox, y + 5);
     } else if (g.state === 'stunned') {
       ctx.strokeStyle = '#f3d79a'; ctx.lineWidth = 1.5;
-      for (let i = 0; i < 3; i++) { const a = state.time * 5 + i * 2.1; ctx.beginPath(); ctx.arc(g.x + Math.cos(a) * 9, y + Math.sin(a) * 3, 1.6, 0, Math.PI * 2); ctx.stroke(); }
+      for (let i = 0; i < 3; i++) { const a = state.time * 5 + i * 2.1; ctx.beginPath(); ctx.arc(g.x + gox + Math.cos(a) * 9, y + Math.sin(a) * 3, 1.6, 0, Math.PI * 2); ctx.stroke(); }
     } else {
       ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.arc(g.x, y, 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(g.x + gox, y, 6, 0, Math.PI * 2); ctx.stroke();
       ctx.strokeStyle = g.meter > 0.35 ? '#f0964a' : '#e9b65a'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(g.x, y, 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * g.meter); ctx.stroke();
+      ctx.beginPath(); ctx.arc(g.x + gox, y, 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * g.meter); ctx.stroke();
     }
   }
 }
@@ -1118,11 +1147,12 @@ function drawPlayer() {
   const p = state.player;
   const t = state.time;
   ctx.save();
-  ctx.translate(p.x, p.y);
-  if (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0) ctx.globalAlpha = 0.45;
-  if (p.hidden) ctx.globalAlpha = 0.55;
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.beginPath(); ctx.ellipse(0, 6, 11, 6, 0, 0, Math.PI * 2); ctx.fill();
+  if (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0) ctx.globalAlpha *= 0.45;
+  if (p.hidden) ctx.globalAlpha *= 0.55;
+  feetShadow(p.x, p.y, 11);
+  drawStack(p.x, p.y, p.dir, 9, 11, '#08080c', '#0e0e14');
+  const [pox, poy] = standUp(p.x, p.y);
+  ctx.translate(p.x + pox, p.y + poy);
   ctx.rotate(p.dir);
   // Tail sways behind him
   ctx.strokeStyle = '#2a1a14';
@@ -1136,6 +1166,7 @@ function drawPlayer() {
   // Body: black rogue layers
   ctx.fillStyle = '#121218';
   ctx.beginPath(); ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(150,160,205,.35)'; ctx.lineWidth = 1; ctx.stroke();   // moonlit rim
   // Katana across the back
   ctx.strokeStyle = '#c9c9d6';
   ctx.lineWidth = 1.6;
@@ -1156,7 +1187,7 @@ function drawPlayer() {
     ctx.beginPath(); ctx.arc(0, 0, 34, -1.1 + k * 0.4, 1.1 * (k * 2 - 1)); ctx.stroke();
   }
   ctx.restore();
-  if (p.hasLedger) { ctx.fillStyle = '#7a1f22'; ctx.fillRect(p.x + 8, p.y - 16, 8, 6); }
+  if (p.hasLedger) { ctx.fillStyle = '#7a1f22'; ctx.fillRect(p.x + pox + 8, p.y + poy - 16, 8, 6); }
 }
 function drawEffects() {
   for (const e of state.effects) {
