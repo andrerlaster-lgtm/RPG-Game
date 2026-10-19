@@ -52,6 +52,7 @@ async function talkTo(n) {
   if (n.who === 'noe') return talkToNoe();
   if (n.who === 'severin') return talkToSeverin();
   if (n.who === 'hustle') return talkToHustle();
+  if (n.who === 'boatman') return talkToBoatman();
   if (n.who === 'needy') return talkToNeedy(n);
   return say('patron', ...(n.line ? [n.line] : pick(PATRON_LINES)));
 }
@@ -138,6 +139,22 @@ async function noeCollectorJob() {
     await say('noe', 'He’ll still be there tomorrow. That’s the problem.');
   }
   return true;
+}
+
+// The smuggler slip: a hidden boat route upriver to the Veyrane estate's back docks.
+async function talkToBoatman() {
+  const p = state.player;
+  const fare = 5;
+  const c = await choose('boatman', 'Upriver, downriver, nowhere at all. Five gold and I never saw you.', [
+    ...(p.gold >= fare ? [{ text: `Upriver to the Veyrane docks. (${fare} gold)`, value: 'go' }] : []),
+    { text: p.gold >= fare ? 'Not tonight.' : `I’m short. (${fare} gold)`, value: 'no' }
+  ]);
+  if (c !== 'go') return;
+  p.gold -= fare;
+  hudCache = '';
+  play('coins2');
+  await say('boatman', 'Keep your head down past the toll lanterns.');
+  enterDistrict('crown-estate', 'from-river');
 }
 
 // Severin never fights here and never threatens openly. He sits, and lets ZAY feel how far his reach goes.

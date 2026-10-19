@@ -40,7 +40,8 @@ const SPEAKERS = {
   noe: { name: 'Noe', portrait: 'noe' },
   severin: { name: 'Severin', portrait: 'severin' },
   patron: { name: 'Regular', portrait: 'patron' },
-  mark: { name: 'Crown gent', portrait: 'patron' }
+  mark: { name: 'Crown gent', portrait: 'patron' },
+  boatman: { name: 'Boatman', portrait: 'patron' }
 };
 
 // ---------- Core: say / choose ----------

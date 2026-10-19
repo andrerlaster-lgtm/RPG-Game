@@ -65,7 +65,7 @@ Bellemorne is split into districts you walk between. A new game starts in the **
 - Your character comes with you: gold, items, gear, level, Name and finished jobs. Each district remembers its opened chests and picked-up coins and cards; guards reset on every visit.
 - You can't leave a district while guards are chasing you.
 - Finishing the ledger job shows the job summary, then sends you back to the Lantern Quarter by the Crooked Halo. Coming back to the estate afterwards is quiet: the ledger is gone.
-- The River and Soot Quarters come next, following the Master Canon (four quarters: Crown, Lantern, River, Soot).
+- The Soot Quarter comes next, following the Master Canon (four quarters: Crown, Lantern, River, Soot).
 - Districts are listed in `districts.js`; to add one, add a map in `levels/`, list it there, and connect it with `exit` and `spawn` objects.
 
 ## The Lantern Quarter and the city watch
@@ -76,6 +76,15 @@ The Lantern Quarter is lively, not poor (as the canon insists): a main street wi
 - Hostile watchmen stay hostile for the rest of that visit; leaving and coming back resets them.
 - Caught by the watch: "The city watch drags ZAY off to the Crown Quarter cells", and you go back to your last save.
 - Patrol routes are Tiled `guard` polylines with `kind` = `watch`.
+
+## The River Quarter
+
+South of the Lantern Quarter (the street at the south end of the middle cross street), where money moves near water: a dock road along the river, a boardwalk and four piers, **Blackwater Market**, a fish market, dark warehouses with an alley between them, a cargo office and a river tavern.
+
+- **The Blackwater fence** now trades here, in the market (same prices, Name rules and choices as before). He has left the estate docks.
+- **The smuggler slip:** the boatman on the east pier takes you upriver to the Veyrane estate's back docks for 5 gold, a second way into the ledger job. A skiff on those docks brings you back to the slip.
+- Dockworkers and merchants to pickpocket, two watch patrols, a chest and coins in the warehouse alley, a fish porter who needs 15 gold (the Crown's new river toll), and regulars with rumors: a fence on the east piers who hasn't opened in a week, someone asking about rogue cards.
+- **Carrying the ledger:** it only leaves the estate by the river boat. Every other exit says "Not with the ledger. Get it to the river boat." (Before, walking out another way lost it.)
 
 ## Job 2: the collector's satchel
 
@@ -139,7 +148,7 @@ To swap a sound, replace the matching file in `audio/` (same name) or change the
 
 ## Editing the level in Tiled
 
-Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lantern-quarter.tmj`, `paper-thief.tmj` for the Veyrane estate) (Tiled is installed in Applications). Open it in Tiled, edit, save, and reload the game.
+Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lantern-quarter.tmj`, `crooked-halo.tmj`, `river-quarter.tmj`, and `paper-thief.tmj` for the Veyrane estate) (Tiled is installed in Applications). Open it in Tiled, edit, save, and reload the game.
 
 - **ground** (tile layer): building, street, garden, hedge (hides ZAY), floor, river, dock. Paint with the `bellemorne-tiles` tileset.
 - **objects** (object layer). Set each object's **Class** to one of:
