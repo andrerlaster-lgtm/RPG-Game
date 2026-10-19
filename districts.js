@@ -113,7 +113,7 @@ function objectiveInfo() {
   if (state.district === 'crown-estate') {
     if (done && !state.player.hasLedger) return { text: 'Nothing left here tonight. Head back to the Lantern Quarter.', goal: exitTo('lantern') };
     if (!state.ledgerTaken) return { text: "Steal the ledger from House Veyrane's counting house", goal: LEDGER_SPOT };
-    return { text: KID.helped ? 'Reach the river boat' : 'Reach the river boat · give your coin to the kid on the dock', goal: BOAT };
+    return { text: 'Reach the river boat', goal: BOAT };
   }
   const taken = state.jobsTaken.has('veyrane-ledger');
   const reported = state.deeds.reportedLedger;

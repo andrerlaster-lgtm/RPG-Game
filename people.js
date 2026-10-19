@@ -113,7 +113,8 @@ async function talkToSeverin() {
 const PROP_STYLE = {
   counter: { h: 0.32, top: '#6a4128', side: '#3e2617', edge: '#8a5a32' },
   table: { h: 0.22, top: '#5a3a24', side: '#33210f', edge: '#7a5232' },
-  stage: { h: 0.1, top: '#3c2a40', side: '#21162a', edge: '#c9a25a' }
+  stage: { h: 0.1, top: '#3c2a40', side: '#21162a', edge: '#c9a25a' },
+  stall: { h: 0.34, top: '#7a1f2a', side: '#3a2418', edge: '#e9b65a', stripes: '#e6dccb' }   // food stall or mask shop awning
 };
 function drawFurniture() {
   for (const pr of PROPS) {
@@ -132,6 +133,10 @@ function drawFurniture() {
     if (liftX(x0, k) > x0) quad(ctx, [[x0, y0], [x0, y1], L(x0, y1), L(x0, y0)]);
     ctx.fillStyle = st.top;
     quad(ctx, [L(x0, y0), L(x1, y0), L(x1, y1), L(x0, y1)]);
+    if (st.stripes) {   // awning stripes
+      ctx.fillStyle = st.stripes;
+      for (let sx = x0 + pr.w / 8; sx < x1; sx += pr.w / 4) quad(ctx, [L(sx, y0), L(sx + pr.w / 8, y0), L(sx + pr.w / 8, y1), L(sx, y1)]);
+    }
     ctx.strokeStyle = st.edge; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(...L(x0, y1)); ctx.lineTo(...L(x1, y1)); ctx.stroke();
     if (pr.kind === 'table') {   // a candle, and a branded Crooked Halo glass

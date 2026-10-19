@@ -246,7 +246,8 @@ function makeGuard(route) {
     kind: route.kind,
     x: pts[0].x, y: pts[0].y, r: 11, dir: 0, route: pts, ri: 1 % pts.length,
     state: 'patrol', meter: 0, hp: 3, path: [], pathT: 0, pathGoal: null, target: null,
-    lostT: 0, lookT: 0, attackCd: 0, windup: 0, stunT: 0, seenBodies: new Set(), speed: 52
+    lostT: 0, lookT: 0, attackCd: 0, windup: 0, stunT: 0, seenBodies: new Set(), speed: 52,
+    watch: route.kind === 'watch', hostile: false
   };
 }
 function newState() {
@@ -571,7 +572,7 @@ function use() {
       return;
     }
   }
-  // 5. The Soot kid at the docks
+  // 5. The Soot kid (by the street stage in the Lantern Quarter)
   if (dist(KID, p) < 44) {
     talkToKid();
     return;
@@ -585,6 +586,22 @@ function use() {
   if (tileAt(p.x, p.y) !== 'h') toast('Nothing to use here.', 1100);
 }
 
+// A crime in front of the city watch: any watchman who can see ZAY or the spot turns hostile.
+function witnessCrime(x, y, victim = null) {
+  const p = state.player;
+  let seen = false;
+  for (const g of state.guards) {
+    if (!g.watch || g.state === 'down' || g.hostile) continue;
+    const sees = (q) => dist(g, q) < 230 && lineOfSight(g.x, g.y, q.x, q.y);
+    if (g === victim || sees(p) || sees({ x, y })) {
+      g.hostile = true;
+      seen = true;
+      if (g.state !== 'stunned') raiseAlarm(g);
+    }
+  }
+  if (seen) toast('The watch saw that!', 1600);
+}
+
 function knockOut(g, silent) {
   g.state = 'down';
   g.meter = 0;
@@ -594,6 +611,7 @@ function knockOut(g, silent) {
   play('thud'); if (!silent) play('chop', { vol: 0.8 });
   if (!silent) noise(g.x, g.y, 120);
   else noise(g.x, g.y, 50);
+  witnessCrime(g.x, g.y);
 }
 
 function throwCard(aimAtMouse) {
@@ -616,6 +634,7 @@ function updateProjectiles(dt) {
         if (g.state !== 'alert') { g.prevState = g.state; g.state = 'stunned'; g.meter = Math.min(0.9, g.meter + 0.3); }
         effect('stun', g.x, g.y);
         play('chop', { vol: 0.6 });
+        witnessCrime(c.x, c.y, g.watch ? g : null);
       }
     }
     if (!c.done && (solidTile(tileAt(c.x, c.y)) || c.life <= 0)) {
@@ -639,6 +658,7 @@ function raiseAlarm(g) {
   g.state = 'alert';
   g.meter = 1;
   g.lostT = 0;
+  g.hostile = true;
   g.target = { x: state.player.x, y: state.player.y };
   // Shouting brings nearby guards running.
   for (const o of state.guards) {
@@ -698,6 +718,14 @@ function updateGuard(g, dt) {
     if (g.stunT <= 0 && g.state === 'stunned') {
       g.state = 'suspicious'; g.target = { x: p.x, y: p.y }; g.lookT = 2.5; g.pathGoal = null;
     }
+    return;
+  }
+
+  // The city watch ignores ZAY until someone sees him commit a crime (see witnessCrime).
+  if (g.watch && !g.hostile && g.state !== 'alert') {
+    g.state = 'patrol';
+    g.meter = 0;
+    if (walkTo(g, g.route[g.ri], g.speed * 0.8, dt)) g.ri = (g.ri + 1) % g.route.length;
     return;
   }
 
@@ -1090,6 +1118,7 @@ function drawCard(x, y, spin) {
 function drawCone(g) {
   if (!SETTINGS.cones) return;
   if (g.state === 'down' || g.state === 'stunned') return;
+  if (g.watch && !g.hostile) return;   // a calm watchman isn't looking for anyone
   const p = state.player;
   const range = p.lit ? 205 : 108;
   const color = g.state === 'alert' ? 'rgba(226,87,76,0.16)' : g.state === 'suspicious' || g.state === 'search' ? 'rgba(240,150,70,0.14)' : 'rgba(233,182,90,0.08)';
@@ -1144,15 +1173,16 @@ function drawGuard(g) {
   }
   ctx.restore();
   feetShadow(g.x, g.y, 12);
-  drawStack(g.x, g.y, g.dir, 10, 12, '#141a2c', g.windup > 0 ? '#3e1a22' : '#1c2440');
+  const def = ENEMIES[g.kind] || ENEMIES.guard;
+  drawStack(g.x, g.y, g.dir, 10, 12, g.watch ? '#21140f' : '#141a2c', g.windup > 0 ? '#3e1a22' : g.watch ? '#33201a' : '#1c2440');
   const [gox, goy] = standUp(g.x, g.y);
   ctx.save();
   ctx.translate(g.x + gox, g.y + goy);
   ctx.rotate(g.dir);
-  ctx.fillStyle = g.windup > 0 ? '#5a2430' : '#26304d';
+  ctx.fillStyle = g.windup > 0 ? '#5a2430' : def.coat;
   ctx.beginPath(); ctx.ellipse(0, 0, 10, 12, 0, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = 'rgba(170,180,220,.25)'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.fillStyle = '#b08a3e';
+  ctx.fillStyle = def.trim;
   ctx.fillRect(-3, -12, 6, 24);
   ctx.fillStyle = '#5a3b2b';
   ctx.beginPath(); ctx.arc(2, 0, 6, 0, Math.PI * 2); ctx.fill();
@@ -1323,11 +1353,12 @@ function finish(won) {
   else if (state.alarms === 0) rating = 'Shadow';
   else if (state.alarms <= 2) rating = 'Rogue';
   else rating = 'Brawler — the guild will have words';
-  document.getElementById('end-kicker').textContent = won ? 'Job complete' : 'Job failed';
+  document.getElementById('end-kicker').textContent = won ? 'Job complete' : state.district === 'crown-estate' ? 'Job failed' : 'Caught';
   document.getElementById('end-title').textContent = rating;
   document.getElementById('end-text').textContent = won
-    ? (p.given > 0 ? 'The boat slides off into the dark with the ledger, and a Soot kid eats well tonight.' : 'The boat slides off into the dark with the ledger. Noe never has to know how close it was.')
-    : 'Veyrane’s guards drag ZAY into the lantern light. Severin will hear about this.';
+    ? (p.given > 0 ? 'The boat slides off into the dark with the ledger, and a Soot kid has eaten well tonight.' : 'The boat slides off into the dark with the ledger. Noe never has to know how close it was.')
+    : state.district === 'crown-estate' ? 'Veyrane’s guards drag ZAY into the lantern light. Severin will hear about this.'
+      : 'The city watch drags ZAY off to the Crown Quarter cells. Noe will hear about this by morning.';
   const stats = [
     ['Time', `${mins}:${secs}`],
     ['Times spotted', state.alarms],
