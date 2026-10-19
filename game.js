@@ -461,18 +461,30 @@ function noise(x, y, radius) {
 }
 
 // ---------- Player ----------
+// The 3D view (render3d.js) takes over drawing the field once WebGL is up, unless Options says Classic.
+const use3D = () => SETTINGS.view === '3d' && !!window.R3D && window.R3D.ready;
+const TURN_RATE = 3;   // radians a second, turning in the 3D view
 function updatePlayer(dt) {
   const p = state.player;
   let mx = 0, my = 0;
-  if (keys.has('arrowup')) my -= 1;
-  if (keys.has('arrowdown')) my += 1;
-  if (keys.has('arrowleft')) mx -= 1;
-  if (keys.has('arrowright')) mx += 1;
+  if (use3D()) {
+    // Third person: Left/Right turn ZAY, Up walks forward, Down steps back.
+    const turn = (keys.has('arrowright') ? 1 : 0) - (keys.has('arrowleft') ? 1 : 0);
+    p.dir += turn * TURN_RATE * dt;
+    const fwd = (keys.has('arrowup') ? 1 : 0) - (keys.has('arrowdown') ? 0.6 : 0);
+    mx = Math.cos(p.dir) * fwd;
+    my = Math.sin(p.dir) * fwd;
+  } else {
+    if (keys.has('arrowup')) my -= 1;
+    if (keys.has('arrowdown')) my += 1;
+    if (keys.has('arrowleft')) mx -= 1;
+    if (keys.has('arrowright')) mx += 1;
+  }
   const mag = Math.hypot(mx, my);
   p.moving = mag > 0.15;
   if (mag > 1) { mx /= mag; my /= mag; }
-  if (p.moving) p.dir = Math.atan2(my, mx);
-  if (!isTouch && mouse.has && !p.moving) {
+  if (p.moving && !use3D()) p.dir = Math.atan2(my, mx);
+  if (!isTouch && mouse.has && !p.moving && !use3D()) {
     // Face the cursor when standing still so card throws aim naturally.
     p.dir = Math.atan2(mouse.wy - p.y, mouse.wx - p.x);
   }
@@ -632,7 +644,7 @@ function throwCard(aimAtMouse) {
   const p = state.player;
   if (p.cards <= 0) { toast('Out of cards.', 1000); return; }
   p.cards -= 1;
-  const a = aimAtMouse ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : p.dir;
+  const a = aimAtMouse && !use3D() ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : p.dir;
   state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(a) * 430, vy: Math.sin(a) * 430, life: 0.62, spin: 0 });
   play('card');
 }
@@ -1462,6 +1474,12 @@ document.getElementById('restart-pause').addEventListener('click', async () => {
 });
 document.getElementById('pause-btn').addEventListener('click', () => { if (state.running) togglePause(); });
 
+// Battles always draw on the 2D canvas; the field uses the 3D canvas when that view is on.
+function show3D(on) {
+  if (!window.R3D || R3D.canvas.hidden === !on) return;
+  R3D.canvas.hidden = !on;
+  canvas.hidden = on;
+}
 let last = performance.now();
 function frame(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
@@ -1487,11 +1505,13 @@ function frame(now) {
     }
   }
   pressed.clear();
+  const field3d = !!LEVEL && state.mode !== 'battle' && use3D();
+  show3D(field3d);
   if (!LEVEL) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#07080f'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   else if (state.mode === 'battle') renderBattle();
   else {
     updateCamera(dt);
-    render();
+    if (field3d) R3D.render(dt); else render();
   }
   requestAnimationFrame(frame);
 }

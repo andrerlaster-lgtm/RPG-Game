@@ -23,6 +23,7 @@
   <script src="audio.js" defer></script>
   <script src="dialog.js" defer></script>
   <script src="shop.js" defer></script>
+  <script src="render3d.js" type="module"></script>
 </head>
 <body>
   <canvas id="game" aria-label="Game view"></canvas>
@@ -155,6 +156,13 @@
       <div class="setting">
         <span class="setting-label"><b>Screen shake</b><small>Turn off if motion bothers you</small></span>
         <button type="button" id="opt-shake" class="toggle" role="switch" aria-checked="true" aria-label="Screen shake"></button>
+      </div>
+      <div class="setting">
+        <span class="setting-label"><b>View</b><small id="opt-view-note">Third person, or the top-down map</small></span>
+        <span id="opt-view" class="segmented" role="radiogroup" aria-label="View">
+          <button type="button" role="radio" data-view="3d">3D</button>
+          <button type="button" role="radio" data-view="classic">Classic</button>
+        </span>
       </div>
       <div class="setting">
         <span class="setting-label"><b>Battle speed</b><small>How fast time gauges fill</small></span>
