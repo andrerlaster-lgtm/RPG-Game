@@ -11,6 +11,7 @@
 
 import * as THREE from './vendor/three/three.module.min.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
+import { makeCobbles, makeTint, withTint, makeGlow, makeWindow, makeBlob, makeMist } from './light3d.js';
 
 const S = 1 / TILE;
 const WALL_H = 2.4;
@@ -32,24 +33,37 @@ if (renderer) {
   el.addEventListener('mousedown', (e) => { if (e.button === 2) pressed.add('mouse-card'); });
   el.addEventListener('contextmenu', (e) => e.preventDefault());
   renderer.setClearColor(0x07080f);
+  // Colour handling. The tone mapper squeezes bright lamps and windows into the screen's range without washing out the
+  // dark blues; Options keeps the choice in one place (LOOK) so it can be compared and tuned.
+  const TONES = { none: THREE.NoToneMapping, linear: THREE.LinearToneMapping, reinhard: THREE.ReinhardToneMapping, cineon: THREE.CineonToneMapping, aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping };
+  const LOOK = { tone: 'neutral', exposure: 1.05 };   // chosen by comparing six mappers on the same street (see docs/graphics)
+  function setLook(l = {}) {
+    Object.assign(LOOK, l);
+    renderer.toneMapping = TONES[LOOK.tone] ?? THREE.NoToneMapping;
+    renderer.toneMappingExposure = LOOK.exposure;
+  }
+  setLook();
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x07080f, 9, 26);
+  scene.fog = new THREE.Fog(0x0b1122, 8, 27);   // cool blue haze: far streets fade into night, not into black
   const camera = new THREE.PerspectiveCamera(60, 1, 0.08, 60);
-  scene.add(new THREE.HemisphereLight(0x5a6890, 0x14101c, 1.1));
-  const moon = new THREE.DirectionalLight(0x9aa8d8, 0.9);
+  const hemi = new THREE.HemisphereLight(0x6a7fb0, 0x1c1a2c, 0.9);   // cool sky above, violet bounce from the ground
+  scene.add(hemi);
+  const OUTDOOR = { sky: new THREE.Color(0x6a7fb0), ground: new THREE.Color(0x1c1a2c), k: 0.9 };
+  const INDOOR = { sky: new THREE.Color(0xd0a070), ground: new THREE.Color(0x40281a), k: 1.3 };   // rooms with no street: a warm glow instead of cold sky
+  const moon = new THREE.DirectionalLight(0x86a0e0, 0.85);
   moon.position.set(-6, 14, -4);
   scene.add(moon, moon.target);
 
   // Street lamps light the scene; only the ones nearest ZAY get a real light (phones can't afford all).
   const LIGHTS = [];
   for (let i = 0; i < 6; i++) {
-    const l = new THREE.PointLight(0xffb45a, 0, 7, 1.6);
+    const l = new THREE.PointLight(0xff9a3c, 0, 7, 1.6);   // warm lantern light
     scene.add(l);
     LIGHTS.push(l);
   }
   // ZAY's own faint glow so he never disappears into the dark.
-  const zayLight = new THREE.PointLight(0x8fa0d8, 1.2, 3.5, 1.5);
+  const zayLight = new THREE.PointLight(0x8fa0d8, 2.2, 4.8, 1.5);
   scene.add(zayLight);
 
   const resize3d = () => {
@@ -175,7 +189,7 @@ if (renderer) {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     return t;
   };
-  const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
+  const wallMat = new THREE.MeshLambertMaterial({ map: wallTex, color: 0xcfc4cc });   // a touch less red under the tone mapper
   const roofMat = new THREE.MeshLambertMaterial({ map: roofTex });
   const WALLS = { brick: wallMat, timber: new THREE.MeshLambertMaterial({ map: timberTex }), stone: new THREE.MeshLambertMaterial({ map: stoneTex }) };
   const SLOPES = [
@@ -183,7 +197,18 @@ if (renderer) {
     new THREE.MeshLambertMaterial({ map: slopeTex('#2f4a3c', 'rgba(200,255,220,.08)'), side: THREE.DoubleSide }),   // old copper
     new THREE.MeshLambertMaterial({ map: slopeTex('#5a3328', 'rgba(255,200,170,.08)'), side: THREE.DoubleSide })    // clay tile
   ];
-  const SHARED_TEX = new Set([wallTex, roofTex, timberTex, stoneTex, ...SLOPES.map((m) => m.map)]);
+  // Night-look textures, drawn once (see light3d.js).
+  const cobbles = makeCobbles({ maxAniso: Math.min(4, renderer.capabilities.getMaxAnisotropy()) });
+  const glowTex = makeGlow(), windowTex = makeWindow(), blobTex = makeBlob(), mistTex = makeMist();
+  const SHARED_TEX = new Set([wallTex, roofTex, timberTex, stoneTex, cobbles.albedo, glowTex, windowTex, blobTex, mistTex, ...SLOPES.map((m) => m.map)]);
+  let tintTex = null;
+  let MIST = [];
+  const addMat = (map, color, opacity) => new THREE.MeshBasicMaterial({ map, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
+  const POOL_BASE = 0.34, HALO_BASE = 0.8;
+  const POOL_MAT = addMat(glowTex, 0xff9232, POOL_BASE);
+  const SHADOW_MAT = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 1, depthWrite: false, fog: false });
+  const MIST_MAT = new THREE.SpriteMaterial({ map: mistTex, color: 0x5d72a8, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false });
+  const HALO_MAT = new THREE.SpriteMaterial({ map: glowTex, color: 0xffa646, transparent: true, opacity: HALO_BASE, blending: THREE.AdditiveBlending, depthWrite: false });
   // How high the top of each tile is (walls, plus the roof over them), for the camera.
   let TOPS = new Float32Array(0);
 
@@ -208,9 +233,39 @@ if (renderer) {
     const groundTex = new THREE.CanvasTexture(mapCanvas);
     groundTex.colorSpace = THREE.SRGBColorSpace;
     groundTex.anisotropy = 4;
-    const ground = mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshLambertMaterial({ map: groundTex }), W / 2, 0, H / 2);
+    const indoors = !grid.some((row) => row.includes('.'));
+    const mood = indoors ? INDOOR : OUTDOOR;
+    hemi.color.copy(mood.sky); hemi.groundColor.copy(mood.ground); hemi.intensity = mood.k;
+    if (tintTex) tintTex.dispose();
+    tintTex = makeTint({ grid, W, H, props: PROPS, TILE });
+    const ground = mesh(new THREE.PlaneGeometry(W, H), withTint(new THREE.MeshLambertMaterial({ map: groundTex }), tintTex), W / 2, 0, H / 2);
+    ground.geometry.setAttribute('tintUv', ground.geometry.attributes.uv.clone());
     ground.rotation.x = -Math.PI / 2;
     world.add(ground);
+    // Cobbled streets: the street tiles get real cobbles with relief (normal map) and a little lantern sheen,
+    // over the painted ground, which stays underneath for everything else (doorsteps, grass, wooden floors).
+    {
+      const street = [];
+      for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) if (grid[ty][tx] === '.') street.push([tx, ty]);
+      if (street.length) {
+        const pos = new Float32Array(street.length * 12), uv = new Float32Array(street.length * 8), tuv = new Float32Array(street.length * 8), nor = new Float32Array(street.length * 12), idx = new Uint16Array(street.length * 6);
+        const PERIOD = 4;   // one cobble texture covers 4 x 4 tiles
+        street.forEach(([tx, ty], i) => {
+          [[0, 0], [1, 0], [1, 1], [0, 1]].forEach(([dx, dz], k) => {
+            const x = tx + dx, z = ty + dz, v = i * 4 + k;
+            pos.set([x, 0.004, z], v * 3); nor.set([0, 1, 0], v * 3);
+            uv.set([x / PERIOD, z / PERIOD], v * 2); tuv.set([x / W, 1 - z / H], v * 2);
+          });
+          idx.set([i * 4, i * 4 + 2, i * 4 + 1, i * 4, i * 4 + 3, i * 4 + 2], i * 6);
+        });
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+        geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); geo.setAttribute('tintUv', new THREE.BufferAttribute(tuv, 2));
+        geo.setIndex(new THREE.BufferAttribute(idx, 1));
+        const mat = withTint(new THREE.MeshPhongMaterial({ map: cobbles.albedo, normalMap: cobbles.normal, normalScale: new THREE.Vector2(1.1, 1.1), specular: 0x3c3224, shininess: 22, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), tintTex);
+        world.add(new THREE.Mesh(geo, mat));
+      }
+    }
     const beyond = mesh(new THREE.PlaneGeometry(W + 80, H + 80), lambert(0x0b0a10), W / 2, -0.02, H / 2);
     beyond.rotation.x = -Math.PI / 2;
     world.add(beyond);
@@ -247,19 +302,45 @@ if (renderer) {
     const ROT = { s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 };
     const NORMAL = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] };
     const pane = new THREE.PlaneGeometry(0.26, 0.4);
-    for (const [list, mat] of [[lit, glowMat(0xd9a456)], [shut, lambert(0x3a2618)]]) {
+    const paneMat = new THREE.MeshBasicMaterial({ map: windowTex });
+    const haloGeo = new THREE.PlaneGeometry(0.78, 0.98), flatGeo = new THREE.PlaneGeometry(1, 1);
+    const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+    const warm = new THREE.Color();
+    for (const [list, mat] of [[lit, paneMat], [shut, lambert(0x3a2618)]]) {
       if (!list.length) continue;
+      const isLit = list === lit;
       const im = new THREE.InstancedMesh(pane, mat, list.length * 2);
+      // Lit windows also get a soft glow around the glass and a pool of light on the street in front of them.
+      const halo = isLit ? new THREE.InstancedMesh(haloGeo, addMat(glowTex, 0xff8f2e, 0.55), list.length * 2) : null;
+      const pool = isLit ? new THREE.InstancedMesh(flatGeo, addMat(glowTex, 0xff8f2e, 0.2), list.length) : null;
       const q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
-      let i = 0;
+      let i = 0, j = 0;
       for (const e of list) {
         const [nx, nz] = NORMAL[e.side];
         q.setFromAxisAngle(up, ROT[e.side]);
         const cx = (e.x0 + e.x1) / 2 * S + nx * 0.01, cz = (e.y0 + e.y1) / 2 * S + nz * 0.01;
-        im.setMatrixAt(i++, m4.compose(new THREE.Vector3(cx, 0.95, cz), q, one));
-        im.setMatrixAt(i++, m4.compose(new THREE.Vector3(cx, 1.75, cz), q, one));
+        const hsh = ((Math.round(cx * 31) * 73856093) ^ (Math.round(cz * 31) * 19349663)) >>> 0;
+        for (const y of [0.95, 1.75]) {
+          im.setMatrixAt(i, m4.compose(new THREE.Vector3(cx, y, cz), q, one));
+          if (isLit) {
+            // each window a slightly different warmth and brightness (candle, lamp, hearth)
+            const k = ((hsh >>> (y > 1 ? 4 : 0)) % 100) / 100;
+            warm.setRGB(0.62 + 0.38 * k, 0.5 + 0.4 * k * k, 0.3 + 0.3 * k);
+            im.setColorAt(i, warm);
+            halo.setMatrixAt(i, m4.compose(new THREE.Vector3(cx + nx * 0.012, y, cz + nz * 0.012), q, one));
+            halo.setColorAt(i, warm);
+          }
+          i++;
+        }
+        if (isLit) { pool.setMatrixAt(j++, m4.compose(new THREE.Vector3(cx + nx * 0.85, 0.011, cz + nz * 0.85), flat, new THREE.Vector3(2.3, 2.3, 1))); }
       }
       world.add(im);
+      if (isLit) {
+        if (im.instanceColor) im.instanceColor.needsUpdate = true;
+        if (halo.instanceColor) halo.instanceColor.needsUpdate = true;
+        halo.renderOrder = 2; pool.renderOrder = 1;
+        world.add(halo, pool);
+      }
     }
 
     // Furniture (counters, tables, the stage, market stalls). Stalls use the CC0 market booths once
@@ -303,12 +384,39 @@ if (renderer) {
       world.add(g);
     }
 
-    // Street lamps.
-    const post = new THREE.CylinderGeometry(0.035, 0.05, 1.9, 6);
-    const head = new THREE.SphereGeometry(0.11, 10, 8);
-    for (const l of LAMPS) {
-      world.add(mesh(post, lambert(0x121019), l.x * S, 0.95, l.y * S));
-      world.add(mesh(head, glowMat(0xffd88a), l.x * S, 1.95, l.y * S));
+    // Street lamps: iron post, lantern with a glowing core, a cap, a soft halo and a pool of light on the street.
+    // The posts, cores and caps are drawn instanced (three draw calls for every lamp in the district).
+    if (LAMPS.length) {
+      const dark = lambert(0x15121c);
+      const parts = [
+        [new THREE.CylinderGeometry(0.035, 0.055, 1.85, 6), dark, 0.925],
+        [new THREE.CylinderGeometry(0.1, 0.07, 0.05, 8), dark, 1.84],
+        [new THREE.CylinderGeometry(0.075, 0.09, 0.2, 8), glowMat(0xffd48a), 1.96],
+        [new THREE.ConeGeometry(0.15, 0.12, 8), dark, 2.12],
+      ];
+      for (const [geo, mat, y] of parts) {
+        const im = new THREE.InstancedMesh(geo, mat, LAMPS.length);
+        LAMPS.forEach((l, i) => im.setMatrixAt(i, m4.makeTranslation(l.x * S, y, l.y * S)));
+        world.add(im);
+      }
+      const pool = new THREE.InstancedMesh(flatGeo, POOL_MAT, LAMPS.length);
+      pool.renderOrder = 1;
+      LAMPS.forEach((l, i) => {
+        pool.setMatrixAt(i, m4.compose(new THREE.Vector3(l.x * S, 0.01, l.y * S), flat, new THREE.Vector3(l.r * S * 1.5, l.r * S * 1.5, 1)));
+        const sp = new THREE.Sprite(HALO_MAT); sp.position.set(l.x * S, 1.97, l.y * S); sp.scale.setScalar(1.25); sp.renderOrder = 3;
+        world.add(sp);
+      });
+      world.add(pool);
+    }
+
+    // Low mist: a few soft patches hanging over the streets (skipped on phones and tablets to keep the fill cost down).
+    MIST = [];
+    if (!isTouch) {
+      for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
+        if (grid[ty][tx] !== '.' || ((tx * 7349 + ty * 3571 + tx * ty) >>> 0) % 17 !== 0) continue;
+        const sp = new THREE.Sprite(MIST_MAT); sp.scale.set(5.5, 2.2, 1); sp.position.set(tx + 0.5, 0.75, ty + 0.5); sp.renderOrder = 4;
+        world.add(sp); MIST.push({ sp, x: tx + 0.5, z: ty + 0.5, ph: tx * 1.7 + ty * 0.9 });
+      }
     }
 
     // The river boat.
@@ -526,11 +634,11 @@ if (renderer) {
     } else {
       inner.add(mesh(new THREE.SphereGeometry(0.137, 12, 8, Math.PI / 2, Math.PI, 0, Math.PI * 0.5), hm, 0.01, 0.95, 0));
     }
-    // A blob shadow at the feet.
-    const sh = mesh(new THREE.CircleGeometry(0.26, 16), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.4, depthWrite: false }), 0, 0.012, 0);
-    sh.rotation.x = -Math.PI / 2;
+    // A soft shadow at the feet. place() stretches it away from the nearest lantern.
+    const sh = mesh(new THREE.PlaneGeometry(0.95, 0.95), SHADOW_MAT, 0, 0.014, 0);
+    sh.rotation.order = 'YXZ'; sh.rotation.x = -Math.PI / 2; sh.renderOrder = 2;
     g.add(sh);
-    g.userData = { inner, legL, legR, body, head };
+    g.userData = { inner, legL, legR, body, head, shadow: sh };
     return g;
   }
   function zayFigure(town) {
@@ -593,6 +701,23 @@ if (renderer) {
     g.visible = true;
     return g;
   }
+  // Which way a lantern throws a figure's shadow: away from the nearest one (and a little away from the moon).
+  const MOON_AWAY = new THREE.Vector2(6, 4).normalize();
+  function castShadow(g) {
+    const sh = g.userData.shadow;
+    if (!sh) return;
+    let bx = 0, bz = 0, bd = 1e9;
+    for (const l of LAMPS) {
+      const dx = g.position.x - l.x * S, dz = g.position.z - l.y * S, d = Math.hypot(dx, dz);
+      if (d < bd) { bd = d; bx = dx; bz = dz; }
+    }
+    const k = bd < 6 ? Math.pow(1 - bd / 6, 0.8) : 0;
+    const vx = MOON_AWAY.x * 0.22 + (bd > 0.01 ? bx / bd : 0) * k * 0.9, vz = MOON_AWAY.y * 0.22 + (bd > 0.01 ? bz / bd : 0) * k * 0.9, m = Math.hypot(vx, vz);
+    const ph = g.rotation.y, lx = (vx * Math.cos(ph) - vz * Math.sin(ph)) / m, lz = (vx * Math.sin(ph) + vz * Math.cos(ph)) / m;
+    sh.rotation.y = Math.atan2(-lz, lx);
+    sh.scale.set(1 + 0.9 * m, 1 - 0.1 * m, 1);
+    sh.position.set(lx * 0.12 * m, 0.014, lz * 0.12 * m);
+  }
   function place(g, x, y, dir, dt, { lying = false } = {}) {
     const u = g.userData;
     const moved = Math.hypot(x - u.lx, y - u.ly);
@@ -601,6 +726,7 @@ if (renderer) {
     u.walk = speed > 8 ? u.walk + dt * Math.min(16, speed / 9) : u.walk * 0.85;
     g.position.set(x * S, 0, y * S);
     g.rotation.y = -dir;
+    castShadow(g);
     const swing = speed > 8 ? Math.sin(u.walk) * 0.5 : 0;
     u.legL.rotation.z = swing; u.legR.rotation.z = -swing;
     u.inner.position.y = speed > 8 ? Math.abs(Math.sin(u.walk)) * 0.035 : 0;
@@ -913,12 +1039,17 @@ if (renderer) {
       if (!l) { L.intensity = 0; return; }
       L.position.set(l.x * S, 1.9, l.y * S);
       L.distance = l.r * S * 1.6;
-      L.intensity = 6 * flick;
+      L.intensity = 7 * flick;
     });
+    POOL_MAT.opacity = POOL_BASE * flick; HALO_MAT.opacity = HALO_BASE * flick;
+    for (const m of MIST) {
+      m.sp.visible = Math.hypot(m.x - camera.position.x, m.z - camera.position.z) < 14;
+      m.sp.position.set(m.x + Math.sin(t * 0.15 + m.ph) * 0.9, 0.75 + Math.sin(t * 0.2 + m.ph * 2) * 0.1, m.z + Math.cos(t * 0.12 + m.ph) * 0.6);
+    }
 
     updateCamera3d(dt);
     renderer.render(scene, camera);
   }
 
-  window.R3D = { ready: true, render, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
+  window.R3D = { ready: true, render, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
 }
