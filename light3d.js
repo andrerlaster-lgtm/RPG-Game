@@ -18,14 +18,14 @@ export function makeCobbles({ size = 1024, n = 22, seed = 7, maxAniso = 4 } = {}
   const rnd = seeded(seed);
   const col = canvas(size, size), hgt = canvas(size, size);
   const c = col.getContext('2d'), h = hgt.getContext('2d');
-  c.fillStyle = '#100f16'; c.fillRect(0, 0, size, size);   // grout
+  c.fillStyle = '#25232e'; c.fillRect(0, 0, size, size);   // grout (kept close to the stones' colour so they read as one surface)
   h.fillStyle = '#000'; h.fillRect(0, 0, size, size);
   const cell = size / n;
   const PALETTE = [[80, 80, 86], [74, 74, 80], [86, 82, 84], [84, 78, 74], [78, 74, 68], [70, 76, 74], [92, 88, 80], [66, 66, 72]];
   const stones = [];
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     const cx = (i + 0.5 + (rnd() - 0.5) * 0.34) * cell, cy = (j + 0.5 + (rnd() - 0.5) * 0.34) * cell;
-    const rx = cell * (0.35 + rnd() * 0.08), ry = cell * (0.33 + rnd() * 0.08), rot = (rnd() - 0.5) * 0.9;
+    const rx = cell * (0.39 + rnd() * 0.07), ry = cell * (0.37 + rnd() * 0.07), rot = (rnd() - 0.5) * 0.9;
     const pts = [];
     const K = 14, ph = rnd() * 6.28, wob = 0.05 + rnd() * 0.05;
     for (let k = 0; k < K; k++) {
@@ -35,7 +35,7 @@ export function makeCobbles({ size = 1024, n = 22, seed = 7, maxAniso = 4 } = {}
       const sq = 1 + 0.16 * Math.abs(Math.sin(2 * a));
       pts.push([Math.cos(a) * rx * r * sq, Math.sin(a) * ry * r * sq]);
     }
-    const base = PALETTE[Math.floor(rnd() * PALETTE.length)], lum = 0.8 + rnd() * 0.5;
+    const base = PALETTE[Math.floor(rnd() * PALETTE.length)], lum = 0.88 + rnd() * 0.32;
     stones.push({ cx, cy, rot, pts, rgb: base.map((v) => Math.min(255, v * lum)), rx, ry, seed: rnd() });
   }
   const path = (ctx, s, ox, oy, k = 1) => {
@@ -55,11 +55,11 @@ export function makeCobbles({ size = 1024, n = 22, seed = 7, maxAniso = 4 } = {}
       const [r, gg, b] = s.rgb;
       g.addColorStop(0, `rgb(${r * 1.12 | 0},${gg * 1.12 | 0},${b * 1.12 | 0})`);
       g.addColorStop(0.65, `rgb(${r | 0},${gg | 0},${b | 0})`);
-      g.addColorStop(1, `rgb(${r * 0.55 | 0},${gg * 0.55 | 0},${b * 0.58 | 0})`);
+      g.addColorStop(1, `rgb(${r * 0.8 | 0},${gg * 0.8 | 0},${b * 0.82 | 0})`);
       c.fillStyle = g; path(c, s, ox, oy); c.fill();
       // height: a low dome with a steep, rounded edge
       const hg = h.createRadialGradient(gx, gy, 0, gx, gy, Math.max(s.rx, s.ry) * 1.1);
-      hg.addColorStop(0, '#fff'); hg.addColorStop(0.55, '#d6d6d6'); hg.addColorStop(0.9, '#7a7a7a'); hg.addColorStop(1, '#3a3a3a');
+      hg.addColorStop(0, '#fff'); hg.addColorStop(0.55, '#e2e2e2'); hg.addColorStop(0.9, '#b4b4b4'); hg.addColorStop(1, '#8a8a8a');
       h.fillStyle = hg; path(h, s, ox, oy); h.fill();
       // grit and a few chips
       if (ox === 0 && oy === 0) {
@@ -74,7 +74,7 @@ export function makeCobbles({ size = 1024, n = 22, seed = 7, maxAniso = 4 } = {}
   const hd = h.getImageData(0, 0, size, size).data;
   const nrm = canvas(size, size), nc = nrm.getContext('2d'), out = nc.createImageData(size, size), o = out.data;
   const at = (x, y) => hd[(((y + size) % size) * size + ((x + size) % size)) * 4] / 255;
-  const strength = 2.6;
+  const strength = 1.7;
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const dx = (at(x - 1, y) - at(x + 1, y)) * strength, dy = (at(x, y + 1) - at(x, y - 1)) * strength;   // image y points down, texture v points up
     const l = Math.hypot(dx, dy, 1), i = (y * size + x) * 4;

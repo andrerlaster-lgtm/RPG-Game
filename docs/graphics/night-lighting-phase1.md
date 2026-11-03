@@ -12,6 +12,11 @@ Scope: the 3D exploration view only (`render3d.js`, new `light3d.js`). The 2D co
 | Windows and building light | Lit windows have frames and a cross, a different warmth and brightness each, a soft glow around the glass, and a pool of light on the street in front. |
 | Grounding | The tint map darkens the ground where it meets walls (ambient occlusion) and under stalls and tables. Figure shadows are soft and stretch away from the nearest lantern. |
 
+## Review round (after the first look)
+
+- **Softer cobbles:** the grout is now close to the stones' colour, the stones sit closer together, their rims are less dark, and the relief is gentler, so the street reads as one worn surface instead of separately outlined pebbles. Texture and depth are kept.
+- **Other districts checked** (`crooked-halo-*`, `river-quarter-*`, `veyrane-estate-*` before/after pictures). Two things were visibly wrong and are fixed: the Crooked Halo (a room with no street) went too dark, so rooms with no street tiles now get a warm ambient glow instead of cold sky light; and ZAY's dark clothes nearly vanished in the Veyrane estate, so his own soft light is stronger and reaches further. The River Quarter looked right and was not changed.
+
 ## Tone mapping
 
 Same street, six options (`tone-mapping-comparison.jpg`; exposure chosen per mapper so overall brightness is similar):

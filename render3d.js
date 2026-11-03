@@ -47,7 +47,10 @@ if (renderer) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x0b1122, 8, 27);   // cool blue haze: far streets fade into night, not into black
   const camera = new THREE.PerspectiveCamera(60, 1, 0.08, 60);
-  scene.add(new THREE.HemisphereLight(0x6a7fb0, 0x1c1a2c, 0.8));   // cool sky above, violet bounce from the ground
+  const hemi = new THREE.HemisphereLight(0x6a7fb0, 0x1c1a2c, 0.9);   // cool sky above, violet bounce from the ground
+  scene.add(hemi);
+  const OUTDOOR = { sky: new THREE.Color(0x6a7fb0), ground: new THREE.Color(0x1c1a2c), k: 0.9 };
+  const INDOOR = { sky: new THREE.Color(0xd0a070), ground: new THREE.Color(0x40281a), k: 1.3 };   // rooms with no street: a warm glow instead of cold sky
   const moon = new THREE.DirectionalLight(0x86a0e0, 0.85);
   moon.position.set(-6, 14, -4);
   scene.add(moon, moon.target);
@@ -60,7 +63,7 @@ if (renderer) {
     LIGHTS.push(l);
   }
   // ZAY's own faint glow so he never disappears into the dark.
-  const zayLight = new THREE.PointLight(0x8fa0d8, 1.2, 3.5, 1.5);
+  const zayLight = new THREE.PointLight(0x8fa0d8, 2.2, 4.8, 1.5);
   scene.add(zayLight);
 
   const resize3d = () => {
@@ -230,6 +233,9 @@ if (renderer) {
     const groundTex = new THREE.CanvasTexture(mapCanvas);
     groundTex.colorSpace = THREE.SRGBColorSpace;
     groundTex.anisotropy = 4;
+    const indoors = !grid.some((row) => row.includes('.'));
+    const mood = indoors ? INDOOR : OUTDOOR;
+    hemi.color.copy(mood.sky); hemi.groundColor.copy(mood.ground); hemi.intensity = mood.k;
     if (tintTex) tintTex.dispose();
     tintTex = makeTint({ grid, W, H, props: PROPS, TILE });
     const ground = mesh(new THREE.PlaneGeometry(W, H), withTint(new THREE.MeshLambertMaterial({ map: groundTex }), tintTex), W / 2, 0, H / 2);
