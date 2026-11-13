@@ -1009,7 +1009,7 @@ if (renderer) {
     if (state.mode === 'field') {
       const target = interactTarget();
       if (target) {
-        const sp = promptSprite(target.isWalker ? 'Lift' : isTouch ? 'Use' : 'E');
+        const sp = promptSprite(interactLabel(target));
         sp.visible = true;
         sp.position.set(target.x * S, 1.32 + Math.sin(t * 5) * 0.03, target.y * S);
       }

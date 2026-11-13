@@ -8,7 +8,7 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 
 ## How to play
 
-- **Goal:** take the ledger from the Veyrane counting house, then reach the river boat at the east docks. Optional: give the coin you pick up (or steal) to the Soot kid by the street stage in the Lantern Quarter.
+- **Goal:** take the ledger from the Veyrane counting house, then use the river boat at the east docks to escape. Optional: give the coin you pick up (or steal) to the Soot kid by the street stage in the Lantern Quarter.
 - **Stealth:** lantern light makes you easy to see; shadows halve how far guards can see you; garden hedges hide you. A ring over each guard fills while they can see you; when it's full they raise the alarm and nearby guards come running.
 - **No casualties:** every takedown and every battle win is a knockout.
 
@@ -17,13 +17,15 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 | Move (3D view) | ↑ walk forward, ↓ step back, ← → turn | Wheel: push up to walk, sideways to turn, down to step back (push further to go faster) | D-pad or left stick, same as keys |
 | Move (Classic view) | Arrow keys | Wheel: ZAY walks the way you push | D-pad or left stick |
 | Sprint (noisy) | Shift | Hold Sprint | Hold LB or RB |
-| Takedown from behind, tail-vault the estate wall, grab the ledger, give coin | E | Use | A |
+| Interact, talk, pick a quest action, or take down a guard from behind | E | Use | A |
 | Throw a card (noise lure; stuns on a direct hit) | Q or right-click (3D: straight ahead; Classic: aims at the cursor) | Card (throws where you face) | X |
 | Roll | Space | Roll | B |
 | Bag (inventory) | I or Tab | Bag button (top) | Y |
 | Pause | Esc or P | II button | Start |
 
 In battles a controller uses the d-pad to choose, **A** to confirm and **B** to go back.
+
+When a quest prompt appears, press **E** / **Use** / **A**. Pick an option with the arrow keys and Enter, the d-pad and **A**, or by tapping it.
 
 ## Battles (Final Fantasy style)
 
@@ -111,9 +113,10 @@ After you've told Noe the ledger job is done, she has a second one. Veyrane sent
 The first story loop of the open city:
 
 1. A new game starts outside **the Crooked Halo**. Walk in through its door (south side of the main street).
-2. **Noe** is behind the bar. She tells you about Veyrane's new penalties and the ledger; agree and the job is yours ("No casualties. And you come back.").
-3. Walk east to the Crown Quarter, take the ledger and reach the boat as before.
-4. You're sent back outside the Halo. Tell Noe it's done (+10 Name).
+2. **Noe** is behind the bar. Ask what the ledger will buy her, agree to bring it back, or take more time. The same five gold you could give the Soot kid will buy passage upriver if you have it.
+3. Walk east to the Crown Quarter or take the smuggler's boat. At the old wall you can choose whether to tail-vault it. At the hedge south of the counting house, scout the patrol or spend a card to draw it away from the door.
+4. At the ledger, take it quickly or inspect the silver seal. Lingering can alert a nearby guard, and what you learn changes ZAY's report to Noe. At the east docks, lose any active pursuit and choose to push off. You can spend a card to draw a patrol away first.
+5. You're sent back outside the Halo. Give Noe the ledger (+10 Name). The collector's satchel job opens after you report back.
 
 - **Severin** is sometimes at a corner table (always on the night you finish the ledger job). It's neutral ground: he doesn't fight and doesn't threaten. He sits, he watches, and he lets ZAY feel how far his reach goes.
 - The regulars have a line each; the musician on the stage keeps playing.
@@ -157,7 +160,7 @@ Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lanter
   - `lamp` — a street lamp (optional `radius`, default 128)
   - `chest` — property `item` (any item name from `characters.js`)
   - `coin` — property `gold`; `cards` — property `count`
-  - `ledger`, `kid`, `boat` — the objective, the Soot kid, the escape boat
+  - `ledger`, `ledger-scout`, `kid`, `boat` — the objective, the patrol overlook, the Soot kid, the escape boat
   - `vault` — draw a 2-point line across a 1-tile wall where ZAY can tail-vault
   - `exit` — a rectangle; walking into it loads another district. Properties `to` (district id from `districts.js`) and `spawn` (spawn name there)
   - `spawn` — a named arrival point (the object's name); `start` is also a spawn

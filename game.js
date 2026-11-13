@@ -8,7 +8,7 @@ const TILE = 32;
 // Each district is a Tiled map in levels/ (list in districts.js), editable in Tiled (mapeditor.org).
 //   Tile layer "ground": tiles 1-7 = building, street, garden, hedge, floor, river, dock.
 //   Object layer "objects" (object Class/Type):
-//     start, lamp (radius), chest (item), coin (gold), cards (count), ledger, kid, boat,
+//     start, lamp (radius), chest (item), coin (gold), cards (count), ledger, ledger-scout, kid, boat,
 //     vault (a 2-point line across a wall), guard (polyline patrol route; kind = guard/captain),
 //     fence (the Blackwater shop), overhear (radius, lines = "text | text | text": guards talk nearby),
 //     exit (rectangle; to = district id, spawn = spawn name there), spawn (named arrival point),
@@ -33,6 +33,7 @@ let FURN = new Set();   // tiles blocked by furniture (props)
 const BOAT = { x: 0, y: 0 };
 const KID = { x: 0, y: 0, helped: false };
 const LEDGER_SPOT = { x: 0, y: 0 };
+const LEDGER_SCOUT = { x: 0, y: 0 };
 const FENCE = { x: 0, y: 0 };
 
 const tileAt = (px, py) => {
@@ -94,7 +95,7 @@ function buildLevel(map) {
     return { a, b, wall: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   });
   // One-of-a-kind spots; a district without one parks it far off the map.
-  for (const [target, kind] of [[BOAT, 'boat'], [KID, 'kid'], [LEDGER_SPOT, 'ledger'], [FENCE, 'fence']]) {
+  for (const [target, kind] of [[BOAT, 'boat'], [KID, 'kid'], [LEDGER_SPOT, 'ledger'], [LEDGER_SCOUT, 'ledger-scout'], [FENCE, 'fence']]) {
     const o = of(kind)[0];
     Object.assign(target, o ? at(o) : { x: -1e5, y: -1e5 });
   }
@@ -559,7 +560,10 @@ function updatePlayer(dt) {
 
   // Actions
   if (pressed.has('i') || pressed.has('tab')) { openInventory(); return; }
-  if (pressed.has('e') || pressed.has('touch-use')) use();
+  if (pressed.has('e') || pressed.has('touch-use')) {
+    use();
+    if (state.mode !== 'field') return;
+  }
   if (pressed.has('q') || pressed.has('mouse-card') || pressed.has('touch-card')) throwCard(pressed.has('mouse-card') || (pressed.has('q') && mouse.has));
 
   // Pickups
@@ -570,11 +574,6 @@ function updatePlayer(dt) {
     if (!c.taken && dist(c, p) < 20) { c.taken = true; p.cards += c.count; play('belt', { vol: 0.8 }); play('card', { delay: 0.05 }); toast(`+${c.count} cards`); }
   }
 
-  // Boat
-  if (Math.hypot(p.x - BOAT.x, p.y - BOAT.y) < 70) {
-    if (p.hasLedger && !state.leaving) { state.leaving = true; endingScene().then(() => finish(true)); }
-    else if (!state.ledgerTaken && !updatePlayer.boatHint) { toast("Not leaving without Veyrane's ledger."); updatePlayer.boatHint = true; }
-  } else updatePlayer.boatHint = false;
   checkExits(p);
 }
 
@@ -585,6 +584,11 @@ function behind(g, p) {
 
 function use() {
   const p = state.player;
+  const questTarget = ledgerQuestTarget(p);
+  if (questTarget === LEDGER_SPOT) { ledgerScene(); return; }
+  if (questTarget === LEDGER_SCOUT) { scoutCountingHouse(); return; }
+  if (questTarget === BOAT) { ledgerBoatScene(); return; }
+
   // 1. Silent takedown
   let best = null;
   for (const g of state.guards) {
@@ -603,23 +607,12 @@ function use() {
   // 2. Tail vault over the estate wall
   for (const v of VAULTS) {
     if (dist(v.wall, p) < 46) {
-      const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
-      p.x = dest.x; p.y = dest.y;
-      effect('vault', v.wall.x, v.wall.y);
-      play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
-      toast('Tail on the ledge, over the wall.');
+      if (state.district === 'crown-estate' && !state.ledgerTaken) chooseLedgerVault(v);
+      else vaultWall(v);
       return;
     }
   }
-  // 3. The ledger
-  if (!state.ledgerTaken && dist(LEDGER_SPOT, p) < 40) {
-    state.ledgerTaken = true;
-    p.hasLedger = true;
-    play('book'); play('jComplete', { vol: 0.7, delay: 0.25 });
-    ledgerScene();
-    return;
-  }
-  // 4. Chests
+  // 3. Chests
   for (const c of state.chests) {
     if (!c.opened && dist(c, p) < 40) {
       c.opened = true;
@@ -632,18 +625,27 @@ function use() {
       return;
     }
   }
-  // 5. The Soot kid (by the street stage in the Lantern Quarter)
+  // 4. The Soot kid (by the street stage in the Lantern Quarter)
   if (dist(KID, p) < 44) {
     talkToKid();
     return;
   }
-  // 6. The Blackwater fence
+  // 5. The Blackwater fence
   if (FENCE.x && dist(FENCE, p) < 44) { talkToFence(); return; }
-  // 7. People
+  // 6. People
   const n = npcNear(p);
   if (n) { talkTo(n); return; }
-  // 8. Nothing nearby
+  // 7. Nothing nearby
   if (tileAt(p.x, p.y) !== 'h') toast('Nothing to use here.', 1100);
+}
+
+function vaultWall(v) {
+  const p = state.player;
+  const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
+  p.x = dest.x; p.y = dest.y;
+  effect('vault', v.wall.x, v.wall.y);
+  play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
+  toast('Tail on the ledge, over the wall.');
 }
 
 // A crime in front of the city watch: any watchman who can see ZAY or the spot turns hostile.
@@ -684,6 +686,19 @@ function throwCard(aimAtMouse) {
   play('card');
 }
 
+function throwQuestLure(landing) {
+  if (state.player.cards <= 0) return;
+  state.player.cards -= 1;
+  play('card');
+  landCardLure(landing.x, landing.y);
+}
+
+function landCardLure(x, y) {
+  noise(x, y, 175);
+  effect('card', x, y);
+  play('uiTick', { vol: 0.9 }); play('card', { delay: 0.02 });
+}
+
 function updateProjectiles(dt) {
   for (const c of state.projectiles) {
     c.x += c.vx * dt; c.y += c.vy * dt; c.life -= dt; c.spin += dt * 20;
@@ -700,9 +715,7 @@ function updateProjectiles(dt) {
     }
     if (!c.done && (solidTile(tileAt(c.x, c.y)) || c.life <= 0)) {
       c.done = true;
-      noise(c.x, c.y, 175);
-      effect('card', c.x, c.y);
-      play('uiTick', { vol: 0.9 }); play('card', { delay: 0.02 });
+      landCardLure(c.x, c.y);
     }
   }
   state.projectiles = state.projectiles.filter((c) => !c.done);
@@ -1529,14 +1542,16 @@ function frame(now) {
     else if (state.mode === 'loading') { /* a district is loading */ }
     else {
       updatePlayer(dt);
-      updateProjectiles(dt);
-      for (const g of state.guards) updateGuard(g, dt);
-      updateWalkers(dt);
-      updateBarks(dt);
-      checkOverhear();
-      for (const e of state.effects) e.t += dt;
-      state.effects = state.effects.filter((e) => e.t < 0.7);
-      updateHud();
+      if (state.mode === 'field') {
+        updateProjectiles(dt);
+        for (const g of state.guards) updateGuard(g, dt);
+        updateWalkers(dt);
+        updateBarks(dt);
+        checkOverhear();
+        for (const e of state.effects) e.t += dt;
+        state.effects = state.effects.filter((e) => e.t < 0.7);
+        updateHud();
+      }
     }
   }
   pressed.clear();

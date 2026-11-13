@@ -62,8 +62,19 @@ async function talkToNoe() {
   const done = state.jobsDone.has('veyrane-ledger');
   if (done && !d.reportedLedger) {
     await say('noe', 'Zay. You’re dripping on my floor.', '…Is that what I think it is?');
-    await say('zay', 'Veyrane’s ledger. Your page is in my coat. The rest of their tidy little rows are somewhere at the bottom of the river.');
-    await say('noe', 'I’m not going to ask how.', 'Thank you. I mean it.');
+    if (d.broughtLedger) {
+      await say('zay', 'Veyrane’s ledger. Put it next to your receipts.');
+      if (d.readLedgerSeal) {
+        await say('zay', 'See the silver mark? They stamped it beside other accounts too.');
+        await say('noe', 'I know two of these names. I’ll look through the rest after closing.');
+      } else {
+        await say('noe', 'Here’s my account. I’m keeping the receipts with it.');
+      }
+      if (KID.helped) await say('noe', 'The kid from the stage went home with supper. Said he found it under a song.');
+    } else {
+      await say('zay', 'Veyrane’s ledger. Your page is in my coat. The rest of it is at the bottom of the river.');
+    }
+    await say('noe', 'Thank you, Zay. I mean it.');
     d.reportedLedger = true;
     addRep(10);
     writeSave();
@@ -83,18 +94,24 @@ async function talkToNoe() {
     return say('noe', 'You already said you’d do it. So go do it, and come back in one piece.');
   }
   await say('noe',
-    'Zay. Sit for a second. You look like you haven’t slept.',
-    'Veyrane’s collectors came by again. New penalties. Payments they say I missed. I didn’t miss them.',
-    'It’s all in their ledger, in the counting house up in the Crown Quarter.');
-  const c = await choose('noe', 'I’m not asking you to do anything.', [
-    { text: 'You don’t have to ask. I’ll get it.', value: 'yes' },
+    'Look at these receipts, Zay. I paid before they asked. Veyrane charged me penalties anyway.',
+    'Their ledger is in the Crown Quarter counting house. Bring me the book that says I paid late.');
+  let c = await choose('noe', 'Can you get it out of the estate?', [
+    { text: 'I’ll bring you the ledger.', value: 'yes' },
+    { text: 'What will the ledger buy you?', value: 'ask' },
     { text: 'Give me a little time.', value: 'no' }
   ]);
+  if (c === 'ask') {
+    c = await choose('noe', 'Time. If they send a collector, I want something to put on the bar besides my word.', [
+      { text: 'I’ll bring you the ledger.', value: 'yes' },
+      { text: 'Give me a little time.', value: 'no' }
+    ]);
+  }
   if (c === 'yes') {
     state.jobsTaken.add('veyrane-ledger');
     writeSave();
     hudCache = '';
-    await say('noe', 'No casualties. And you come back. Both of those, Zay.');
+    await say('noe', 'Bring the whole book. No casualties. And you come back.');
   } else {
     await say('noe', 'Take your time. Just don’t take too long.');
   }
@@ -152,9 +169,9 @@ async function talkToBoatman() {
   if (c !== 'go') return;
   p.gold -= fare;
   hudCache = '';
-  play('coins2');
   await say('boatman', 'Keep your head down past the toll lanterns.');
-  enterDistrict('crown-estate', 'from-river');
+  if (await enterDistrict('crown-estate', 'from-river')) play('coins2');
+  else { p.gold += fare; hudCache = ''; }
 }
 
 // Severin never fights here and never threatens openly. He sits, and lets ZAY feel how far his reach goes.
