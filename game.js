@@ -308,7 +308,7 @@ window.addEventListener('keydown', (e) => {
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(k)) e.preventDefault();
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
-  if ((k === 'p' || (k === 'escape' && state.mode === 'field')) && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
+  if (!e.repeat && (k === 'p' || (k === 'escape' && state.mode === 'field')) && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
@@ -343,7 +343,7 @@ function pollGamepad() {
   if (pressed.has('p') && now.has('p') && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
 }
 window.addEventListener('gamepadconnected', () => toast('Controller connected', 1500));
-window.addEventListener('blur', () => { keys.clear(); if (state.running && !state.over && !state.paused) togglePause(); });
+window.addEventListener('blur', () => { resetTraversal(); if (state.running && !state.over && !state.paused) togglePause(); });
 canvas.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true; });
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 2) pressed.add('mouse-card');
@@ -493,12 +493,27 @@ function noise(x, y, radius) {
 // ---------- Player ----------
 // The 3D view (render3d.js) takes over drawing the field once WebGL is up, unless Options says Classic.
 const use3D = () => SETTINGS.view === '3d' && !!window.R3D && window.R3D.ready;
+function resetTraversal() {
+  // Preserve padHeld so a held Start button cannot retrigger pause on every poll.
+  keys.clear(); pressed.clear(); stickRelease();
+  document.querySelectorAll('.is-held').forEach((el) => el.classList.remove('is-held'));
+  if (state.player) { state.player.vx = state.player.vy = 0; state.player.moving = false; }
+  if (window.R3D) R3D.cancelOrbit();
+}
 const TURN_RATE = 3;   // radians a second, turning in the 3D view
 function updatePlayer(dt) {
   const p = state.player;
   let mx = 0, my = 0;
   const wheel = stick.on && Math.hypot(stick.x, stick.y) > 0.15;
-  if (use3D()) {
+  const cameraMove = use3D() && ['w', 'a', 's', 'd'].some((key) => keys.has(key));
+  if (cameraMove) {
+    const forward = Number(keys.has('w')) - Number(keys.has('s'));
+    const right = Number(keys.has('d')) - Number(keys.has('a'));
+    const yaw = R3D.heading();
+    mx = Math.cos(yaw) * forward - Math.sin(yaw) * right;
+    my = Math.sin(yaw) * forward + Math.cos(yaw) * right;
+    if (mx || my) p.dir += angDiff(p.dir, Math.atan2(my, mx)) * Traversal.damp(16, dt);
+  } else if (use3D()) {
     // Third person: Left/Right turn ZAY, Up walks forward, Down steps back.
     // The wheel works the same way: push up to walk, sideways to turn, both to walk round a corner.
     const turn = wheel ? Math.sign(stick.x) * Math.max(0, Math.abs(stick.x) - 0.15) / 0.85
@@ -511,10 +526,10 @@ function updatePlayer(dt) {
   } else if (wheel) {
     mx = stick.x; my = stick.y;
   } else {
-    if (keys.has('arrowup')) my -= 1;
-    if (keys.has('arrowdown')) my += 1;
-    if (keys.has('arrowleft')) mx -= 1;
-    if (keys.has('arrowright')) mx += 1;
+    if (keys.has('arrowup') || keys.has('w')) my -= 1;
+    if (keys.has('arrowdown') || keys.has('s')) my += 1;
+    if (keys.has('arrowleft') || keys.has('a')) mx -= 1;
+    if (keys.has('arrowright') || keys.has('d')) mx += 1;
   }
   const mag = Math.hypot(mx, my);
   p.moving = mag > 0.15;
@@ -535,16 +550,31 @@ function updatePlayer(dt) {
     p.dashT = 0.17; p.dashCd = 0.8; p.invuln = Math.max(p.invuln, 0.2);
     play('cloth2', { vol: 0.7 }); play('swish');
   }
+  const oldX = p.x, oldY = p.y;
   if (p.dashT > 0) {
-    p.dashT -= dt;
-    move(p, Math.cos(p.dir) * 520 * dt, Math.sin(p.dir) * 520 * dt);
-  } else if (p.moving) {
-    move(p, mx * speed * dt, my * speed * dt);
-    p.step += dt * (p.sprint ? 14 : 9);
-    p.stepT = (p.stepT || 0) - dt;
+    const dashDt = Math.min(dt, p.dashT);
+    p.dashT = Math.max(0, p.dashT - dt);
+    p.vx = p.vy = 0;
+    move(p, Math.cos(p.dir) * 520 * dashDt, Math.sin(p.dir) * 520 * dashDt);
+  } else {
+    // Reach walk speed in ~0.12 s and brake in ~0.07 s. Classic retains direct movement.
+    const v = use3D() ? Traversal.velocity(p.vx || 0, p.vy || 0,
+      p.moving ? mx * speed : 0, p.moving ? my * speed : 0, p.moving ? 1000 : 1800, dt)
+      : { x: mx * speed, y: my * speed };
+    p.vx = v.x; p.vy = v.y;
+    move(p, v.x * dt, v.y * dt);
+    // Don't store momentum along a blocked axis: releasing at a wall must stop cleanly.
+    if (Math.abs(p.x - oldX) < 0.001) p.vx = 0;
+    if (Math.abs(p.y - oldY) < 0.001) p.vy = 0;
+  }
+  const travelled = Math.hypot(p.x - oldX, p.y - oldY);
+  p.moving = travelled > 0.01;
+  if (p.moving && p.dashT <= 0) {
+    p.step += travelled / 13;
+    p.stepT = (p.stepT || 0) - travelled;
     if (p.stepT <= 0) {
       if (inHedge) play('rustle'); else playStep(p.sprint);
-      p.stepT = p.sprint ? 0.27 : 0.4;
+      p.stepT = p.sprint ? 50 : 47;
     }
   }
 
@@ -643,6 +673,8 @@ function vaultWall(v) {
   const p = state.player;
   const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
   p.x = dest.x; p.y = dest.y;
+  p.vx = p.vy = 0;
+  if (window.R3D) R3D.resetCamera();
   effect('vault', v.wall.x, v.wall.y);
   play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
   toast('Tail on the ledge, over the wall.');
@@ -1498,6 +1530,7 @@ async function start(fromSave = false) {
   updateBagBadge();
 }
 function togglePause() {
+  resetTraversal();
   state.paused = !state.paused;
   suspendMusic(state.paused);
   document.getElementById('pause').hidden = !state.paused;
@@ -1554,6 +1587,7 @@ function frame(now) {
       }
     }
   }
+  if (state.paused || state.mode !== 'field') { state.player.vx = state.player.vy = 0; }
   pressed.clear();
   const field3d = !!LEVEL && state.mode !== 'battle' && use3D();
   show3D(field3d);

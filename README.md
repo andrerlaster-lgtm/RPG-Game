@@ -14,8 +14,9 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 
 | Action | Keyboard / mouse | Touch | Controller |
 |---|---|---|---|
-| Move (3D view) | ↑ walk forward, ↓ step back, ← → turn | Wheel: push up to walk, sideways to turn, down to step back (push further to go faster) | D-pad or left stick, same as keys |
-| Move (Classic view) | Arrow keys | Wheel: ZAY walks the way you push | D-pad or left stick |
+| Move (3D view) | WASD relative to camera; arrows retain forward/back/turn | Wheel: push up to walk, sideways to turn, down to step back (push further to go faster) | D-pad or left stick, same as keys |
+| Move (Classic view) | Arrow keys or WASD | Wheel: ZAY walks the way you push | D-pad or left stick |
+| Look around (3D) | Left-drag view; wheel or +/− zoom; C recenter | Drag the open view | — |
 | Sprint (noisy) | Shift | Hold Sprint | Hold LB or RB |
 | Interact, talk, pick a quest action, or take down a guard from behind | E | Use | A |
 | Throw a card (noise lure; stuns on a direct hit) | Q or right-click (3D: straight ahead; Classic: aims at the cursor) | Card (throws where you face) | X |
@@ -173,15 +174,16 @@ Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lanter
 
 The field is drawn in 3D by default, with a chase camera behind ZAY (`render3d.js`, using [Three.js](https://threejs.org) r169, MIT, copied into `vendor/three/`). Battles are still the 2D Final Fantasy-style screen.
 
-- **Only the picture changed.** Maps, collision, stealth, guard vision, saves and every job are the same code as the Classic view. Options → View switches between them at any time.
-- **Controls:** turn with ← →, walk with ↑, step back with ↓. Cards fly straight ahead.
-- **Camera:** sits behind and above ZAY and swings round as he turns. In tight streets it comes in closer and looks down over the rooftops instead of going through a wall. On phones the view is shifted up so ZAY stands above the thumb controls.
+- **Shared game systems.** Maps, collision, stealth, guard vision, saves and every job use the same code as the Classic view. The 3D controls add smoothing on top of those rules. Options → View switches between them at any time.
+- **Controls:** WASD moves relative to the camera with smooth facing, acceleration and quick braking. Arrow keys, the touch wheel and controller retain forward/back/turn. Left-drag the open view to orbit (also on touch); wheel or +/− zoom; C recenters. Cards still fly where ZAY faces. Footsteps and sprint noise follow actual movement, so pushing into a wall stays quiet.
+- **Camera:** follows behind and above ZAY, with a stable heading during WASD movement. It sweeps a camera-sized volume against buildings, roof heights, furniture and projecting balconies, pulls in immediately, and eases back out. The smoothed camera path is checked too, preventing corner cutting. Very close cameras hide ZAY briefly to keep the view clear. On phones the view is shifted up so ZAY stands above the thumb controls.
 - **What's drawn:** the same painted ground as Classic; buildings with timber-framed plaster or brick walls (cut stone on the Veyrane estate), pitched slate, copper or clay roofs on anything at least two tiles deep, and lit or shuttered windows; hedges, furniture and market stalls, lamp posts (the six nearest give real light), the boat, exits as a soft gold glow, place names, vision cones on the ground, awareness rings and "!" over guards, the E / Use / Lift prompt, speech bubbles, and the gold objective arrow.
 - **Market stalls, stools and kegs are real models:** CC0 models by Polygonal Mind (`models/props.glb`, 644 KB, loaded by `vendor/three/addons/GLTFLoader.js`). Food and mask stalls use the market booths, facing the open street and fitted to the stall's tiles. Tables get stools, and the Crooked Halo bar gets kegs. If the file can't load, the simple boxes are used instead.
-- **Characters are placeholders for now:** simple figures built from shapes in the model-sheet colours (ZAY's coat, locs, katana and tail; Noe, Severin, guards, watch, marks and locals). The next step is real rigged CC0 character models (for example Quaternius or Kenney packs); those sites are blocked from the build environment. The plan now is to make them with MPFB2 in Blender: see `docs/characters-with-mpfb2.md`.
+- **Characters remain procedural, pending authored rigs:** articulated arms and hip-pivoted legs, blended distance-based strides and a roll pose, built from shapes in the model-sheet colours (ZAY's coat, locs, katana and tail; Noe, Severin, guards, watch, marks and locals). ZAY now has pointed ears, tied locs, a long curved tail, boots and moving coat panels. The next step is real rigged CC0 character models (for example Quaternius or Kenney packs); those sites are blocked from the build environment. The plan now is to make them with MPFB2 in Blender: see `docs/characters-with-mpfb2.md`.
 - **Night look (phase 1):** warm lantern light against cool shadows, real cobbles with relief, lantern halos and light pools, glowing framed windows, soft lantern-aware shadows and low mist, drawn by `light3d.js` with no extra image files. See `docs/graphics/night-lighting-phase1.md` for the before/after pictures, the tone-mapping comparison and the performance numbers.
+- **Polish pass:** iron galleries on street-facing windows, garden plants, static moon shadows and animated river highlights above the painted ground. Static character parts are batched; district rebuilds dispose their GPU resources. See `docs/graphics/third-person-polish.md` for provenance, validation and remaining work.
 - **No WebGL:** if the device can't run 3D, the game stays in Classic and Options says so.
-- Tune it in `render3d.js`: `WALL_H` (building height), `CAM_BACK` / `CAM_UP` (camera distance and height), and `TURN_RATE` in `game.js`.
+- Tune it in `render3d.js`: `WALL_H` (building height), `zoomBack` / `pitch` (camera distance and angle), and `TURN_RATE` in `game.js`.
 
 ## 2.5D look (Classic view)
 
@@ -232,12 +234,27 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `reputation.js` — the Name score, its tiers and the fence price rule
 - `characters.js` — classes, party, spells, item database, equipment, levels, enemies
 - `game.js` — map, lighting, guards, stealth, the Classic renderer, and the switch into battles
+- `traversal.js` — tested velocity and camera-clearance math
 - `render3d.js` — the third-person 3D view (Three.js)
 - `light3d.js` — the 3D night look: generated cobble, glow, shadow and mist textures
 - `vendor/three/` — Three.js r169 (MIT), plus its GLTF loader in `addons/`
 - `models/props.glb` — CC0 market stalls, stools and kegs (Polygonal Mind)
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)
 - `inventory.js` — the bag screen, item icons, equipping and field item use
+
+## Validation
+
+`npm test` runs the movement/camera math regressions. `npm run check` checks JavaScript syntax and all Tiled map structures. There is still no build step and no runtime package installation.
+
+For the optional real-browser suite, make `playwright-core` available separately and run:
+
+```bash
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright-core CHROME_PATH=/absolute/path/to/chrome npm run test:browser
+```
+
+The suite starts its own localhost server and writes screenshots/results under `work/playtest/` (override with `TEST_ARTIFACTS`). It uses keyboard/pointer controls plus deterministic scene fixtures; it is not a complete campaign playthrough. Physical controllers and real mobile GPUs remain unverified.
+
+`vercel.json` disables automatic Git deployments only for `feat/third-person-polish`, so review can happen before deployment approval. It does not alter login protection or the production branch.
 
 ## Preview
 

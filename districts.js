@@ -54,6 +54,8 @@ function resetDistrict() {
   state.ledgerTaken = state.jobsDone.has('veyrane-ledger');
   state.leaving = false;
   state.player.hasLedger = false;
+  state.player.vx = state.player.vy = 0;
+  state.player.dashT = 0;
   state.npcs = presentNpcs();
   state.walkers = makeWalkers();
   BARKS.length = 0;
