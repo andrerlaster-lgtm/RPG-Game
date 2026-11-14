@@ -56,6 +56,9 @@ Your end rating depends on how often you were spotted and how many guards you kn
 ## Options and HUD
 
 - **Options** (title screen or pause menu): sound volume, guard vision cones on/off, screen shake on/off, **View** (3D or Classic) and battle speed (Slow / Normal / Fast). Settings are saved in this browser on this device.
+- **Minimap** (top right in the field): the streets around ZAY, the ways out (gold squares), the objective (a gold ring, pinned to the edge when it's off the map), and only the guards ZAY could see for himself or who are already chasing him. In 3D it turns with the camera; the N shows north. Code: `minimap.js`.
+- **District name card:** arriving in a district shows its name in large letters for a few seconds (it replaced the small toast).
+- **Graphics quality** has **Auto** (the default for new players): High until the device shows it can't keep up (about 4 seconds under ~25 frames a second), then Low for the rest of the session. A choice already saved on a device (Low or High) is kept.
 - **Restart level** asks for confirmation first.
 - **Bag badge:** a red number on the Bag button counts new items; tabs with new items get a dot, and new items show a "New" tag until you select them.
 - **Tooltips:** hover (or focus, or long-press on a phone) the HP, gold, cards, visibility, Bag and Pause items in the HUD.
@@ -183,6 +186,9 @@ The field is drawn in 3D by default, with a chase camera behind ZAY (`render3d.j
 - **Lighting and quality:** Options → Scene lighting selects Night, Dusk or Day, with generated skies, environment lighting, fog and wet-surface response. These are visual previews; stealth still uses the existing night rules. Low quality reduces resolution, local lights, distant decorations and mist, and disables directional shadows. Settings persist on this device.
 - **Night look (phase 1):** warm lantern light against cool shadows, real cobbles with relief, lantern halos and light pools, glowing framed windows, soft lantern-aware shadows and low mist, drawn by `light3d.js` with no extra image files. See `docs/graphics/night-lighting-phase1.md` for the before/after pictures, the tone-mapping comparison and the performance numbers.
 - **Polish pass:** iron galleries on street-facing windows, garden plants, static moon shadows and animated river highlights above the painted ground. Static character parts are batched; district rebuilds dispose their GPU resources. See `docs/graphics/third-person-polish.md` for provenance, validation and remaining work.
+- **Street life** (`streetlife3d.js`): a door with a stone step on each house's street side (on a wall without windows, so the shutters and galleries stay), door lanterns, painted shop signs on iron brackets (not on the estate), chimneys with drifting smoke, strings of paper lanterns across the Lantern Quarter's streets (fewer in the River Quarter), plank docks on posts, and trees. Rooms like the Crooked Halo no longer show street windows on their inside walls.
+- **Trees are solid.** `plantTrees` in `game.js` plants them by rule rather than in Tiled: on open garden ground and in the middle of wide squares, never within about two tiles of any Tiled object or patrol/walking route. A tree blocks its tile in both views (it joins `FURN`, like furniture), so guards path round it. Classic draws it as a crown seen from above.
+- **Glow** (`post3d.js`, High only): bloom round lanterns and windows, a cool-shadow / warm-highlight grade, a vignette, and a faint red edge while guards are chasing. Low draws straight to the screen.
 - **No WebGL:** if the device can't run 3D, the game stays in Classic and Options says so.
 - Tune it in `render3d.js`: `WALL_H` (building height), `zoomBack` / `pitch` (camera distance and angle), and `TURN_RATE` in `game.js`.
 
@@ -237,12 +243,15 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `game.js` — map, lighting, guards, stealth, the Classic renderer, and the switch into battles
 - `traversal.js` — tested velocity and camera-clearance math
 - `render3d.js` — the third-person 3D view (Three.js)
+- `streetlife3d.js` — doors, signs, chimney smoke, lantern strings, docks and trees in 3D
+- `post3d.js` — the High-quality finishing pass (bloom, colour grade, vignette)
+- `minimap.js` — the minimap and the district name card
 - `light3d.js` — the 3D night look: generated cobble, glow, shadow and mist textures
 - `world-art3d.js` — generated plaster/wetness, sky/environment lighting, instanced facade and foliage detail
 - `hero-config.js` — replaceable ZAY model path, orientation and semantic animation mappings
 - `hero3d.js` — reusable ZAY loading, normalization and animation controller
 - `models/zay/` — current Shadow rogue, previous prototypes, and their separate license notices
-- `vendor/three/` — Three.js r169 (MIT), plus its GLTF loader in `addons/`
+- `vendor/three/` — Three.js r169 (MIT), plus its GLTF loader and post-processing add-ons in `addons/`
 - `models/props.glb` — CC0 market stalls, stools and kegs (Polygonal Mind)
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)
 - `inventory.js` — the bag screen, item icons, equipping and field item use
@@ -250,6 +259,8 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 ## Validation
 
 `npm test` runs the movement/camera math regressions. `npm run check` checks JavaScript syntax and all Tiled map structures. There is still no build step and no runtime package installation.
+
+`npm run test:smoke` (`tests/smoke.cjs`) is a second real-browser check that drives the game loop in fixed steps, so it also passes on slow machines and software graphics: movement, collision from 16 directions, camera drag/zoom/clearance, all four districts (exits reachable, trees solid, patrols moving), takedown, cards, coins, bag, pause, save, talking to Noe, a battle, Classic, Low/High/Auto graphics and GPU resource counts across district changes. It needs Playwright: `npm i -g playwright`, then `NODE_PATH=$(npm root -g) npm run test:smoke`.
 
 For the optional real-browser suite, make `playwright-core` available separately and run:
 

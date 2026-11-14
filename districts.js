@@ -91,7 +91,7 @@ async function enterDistrict(id, spawn = 'start', { save = true } = {}) {
   hudCache = '';
   state.mode = 'field';
   fadeEl.classList.remove('is-on');
-  toast(DISTRICTS[id].name, 2000);
+  { const [title, sub = ''] = DISTRICTS[id].name.split(' · '); showBanner(title, sub || 'Bellemorne'); }
   if (save) writeSave();
   return true;
 }
