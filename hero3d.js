@@ -2,11 +2,11 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
 export const HERO = {
-  url: 'models/zay/rogue.glb', height: 1.2, rotationY: Math.PI / 2,
-  hide: ['1H_Crossbow', '2H_Crossbow', 'Throwable'],
+  url: 'models/zay/zay-mock.glb', height: 1.3, rotationY: Math.PI / 2,
+  hide: [], centerXZ: false, preserveMaterials: true, probeBones: { leg: 'thigh_l', root: 'Root' },
   clips: { idle: 'Idle', walk: 'Walking_A', run: 'Running_A', dodge: 'Dodge_Forward', throw: 'Throw', attack: 'Dualwield_Melee_Attack_Slice', interact: 'Interact' },
   // Clips should be in place. Add root-node names here for custom files with horizontal root motion.
-  rootMotionNodes: ['root'], fade: 0.16,
+  rootMotionNodes: ['Root'], fade: 0.16,
   durations: { dodge: 0.17, throw: 0.45, attack: 0.55 }
 };
 export async function loadHero(config = HERO) {
@@ -21,7 +21,7 @@ export async function loadHero(config = HERO) {
   const size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
   const scale = config.height / size.y;
   const pivot = new THREE.Group(); pivot.rotation.y = config.rotationY; pivot.scale.setScalar(scale);
-  model.position.set(-centre.x, -box.min.y, -centre.z); pivot.add(model);
+  model.position.set(config.centerXZ === false ? 0 : -centre.x, -box.min.y, config.centerXZ === false ? 0 : -centre.z); pivot.add(model);
   const group = new THREE.Group(); group.add(pivot);
   const mixer = new THREE.AnimationMixer(model), actions = {};
   for (const [role, name] of Object.entries(config.clips)) {
@@ -58,9 +58,9 @@ export async function loadHero(config = HERO) {
       }
       mixer.update(dt);
     },
-    debug() { return { loaded: true, url: config.url, clip: current?.getClip().name, clips: Object.keys(actions), weights: Object.fromEntries(Object.entries(actions).map(([k,a])=>[k,a.getEffectiveWeight()])), leg: model.getObjectByName('upperlegl')?.quaternion.toArray(), root: model.getObjectByName('root')?.position.toArray(), time: current?.time }; }
+    debug() { return { loaded: true, url: config.url, clip: current?.getClip().name, clips: Object.keys(actions), weights: Object.fromEntries(Object.entries(actions).map(([k,a])=>[k,a.getEffectiveWeight()])), leg: model.getObjectByName(config.probeBones?.leg || 'upperlegl')?.quaternion.toArray(), root: model.getObjectByName(config.probeBones?.root || 'root')?.position.toArray(), time: current?.time }; }
   };
-  model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.receiveShadow = true; o.material.roughness = 0.95; } });
+  model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.receiveShadow = true; if (!config.preserveMaterials) o.material.roughness = 0.95; } });
   group.userData.rig = controller;
   controller.reset();
   return controller;

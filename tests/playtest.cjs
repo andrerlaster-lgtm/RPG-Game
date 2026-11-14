@@ -217,7 +217,7 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
     });
     await record('unavailable ZAY asset retains a playable procedural fallback',async()=>{
       const fallback=await browser.newContext({viewport:{width:800,height:600}});
-      await fallback.route('**/models/zay/rogue.glb',route=>route.fulfill({status:404,body:'Deliberately unavailable test asset'}));
+      await fallback.route('**/models/zay/zay-mock.glb',route=>route.fulfill({status:404,body:'Deliberately unavailable test asset'}));
       const p=await fallback.newPage(),runtime=[];p.on('pageerror',e=>runtime.push(e.message));
       await p.goto(url);await p.waitForFunction(()=>window.R3D&&LEVEL&&R3D.hero().error);
       await p.click('#start');await p.waitForTimeout(500);await p.evaluate(()=>closeDialog());

@@ -84,3 +84,9 @@ THE SOFTWARE.
 
 Changes: merged into one file, normal/roughness maps removed, colour textures shrunk to 256 px WebP, and geometry quantized (with gltf-transform). No attribution is required; credited here anyway.
 
+
+## ZAY prototype anatomy and skeleton — MPFB (CC0)
+
+`models/zay/zay-mock.glb` derives its anatomy, macro targets, game-engine skeleton and weights from [MakeHuman Community MPFB](https://github.com/makehumancommunity/mpfb2), commit `9de0707fdc88438d7c53a1a2ac7937d9221e2431`. Bundled graphical assets, including rigs and weights, are CC0. The source add-on is GPL and is not shipped in the game. Original asset license and explanatory license text are in `models/zay/LICENSE-MPFB-ASSETS.md` and `models/zay/MPFB-LICENSE-EXPLANATION.md`.
+
+Changes: selected male adult anatomy, custom pointed ears, fitted clothing, locs, tail, accessories, material-batched skinned meshes and seven original in-place animation prototypes. No third-party clothing/hair packs used. GLB SHA-256: `9eaef7631ebbcdd15f6a87cfdc5aef2f0c08ece6a1060c7d0219d1e680bef19b`.
