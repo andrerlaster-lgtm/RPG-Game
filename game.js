@@ -698,6 +698,7 @@ function witnessCrime(x, y, victim = null, radius = 230, watchOnly = false) {
 }
 
 function knockOut(g, silent) {
+  if (silent && window.R3D) R3D.playHero('attack');
   g.state = 'down';
   g.meter = 0;
   state.kos += 1;
@@ -713,6 +714,7 @@ function throwCard(aimAtMouse) {
   const p = state.player;
   if (p.cards <= 0) { toast('Out of cards.', 1000); return; }
   p.cards -= 1;
+  if (window.R3D) R3D.playHero('throw');
   const a = aimAtMouse && !use3D() ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : p.dir;
   state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(a) * 430, vy: Math.sin(a) * 430, life: 0.62, spin: 0 });
   play('card');
