@@ -6,7 +6,7 @@ The playable 3D character now uses **Shadow the Rogue Assassin by Grigory Petrov
 
 - Replaced the plain prototype with a skinned mesh containing sculpted facial features, hood/hair, layered cloth and leather, cross-body straps, buckles, bracers, hip panels, knee guards and boots.
 - Connected the pack's actual normal, roughness and metallic textures. Removed the incorrect base-color-as-emission setup and excessive specular extension.
-- Resized base color and normal maps to 2048², packed roughness/metallic into 1024², smoothed split normals across shallow seams and baked explicit UV tangents. No primitive clothing or body geometry was generated.
+- Resized the base color map to 2048² (JPEG) and the normal map to 1024², packed roughness/metallic into 1024² (both JPEG without colour subsampling since November 14, which cut the file from 10.3 MB to 3.6 MB with no visible change in game; see `tools/shrink_rogue_textures.py`), smoothed split normals across shallow seams and baked explicit UV tangents. No primitive clothing or body geometry was generated.
 - Preserved the supplied idle, walking, running and kick animations. Added short ZAY-specific card throw, crouching dodge and interaction gestures on the same skeleton. Clips crossfade, restart correctly and use a common horizontal root anchor; the gameplay controller owns all translation.
 - Added a soft following spotlight with a 512² moving shadow on high quality. Low quality retains contact shadows. The larger district moon shadow is cached, with ZAY excluded during refresh to prevent a stale silhouette.
 - Moved model path, scale, facing, semantic clips, timings and root/bone names into `hero-config.js`. `hero3d.js` measures the configured idle pose rather than an arbitrary exported pose and reports semantic roles for tests.
@@ -19,7 +19,7 @@ The archive's `README.txt.txt` grants royalty-free use in games and commercial p
 
 Source archive SHA-256: `1c30da2f3b188afea6f24f1293cce6493ffaefbac50b5ebbd1e1226dd9ddf0f4` (175,475,482 bytes).
 
-Runtime GLB SHA-256: `9ddf2d8427dfe865f459e2042823d241435a5772c4074c9a813ce3dd4d2cc66f` (10,328,300 bytes).
+Runtime GLB SHA-256: `84c9aaae57b0243b320a5f0114fbb2b1216275384f05c4f85eb03c3a614b9b11` (3,629,292 bytes). Before the texture shrink it was `9ddf2d8427dfe865f459e2042823d241435a5772c4074c9a813ce3dd4d2cc66f` (10,328,300 bytes).
 
 Actual runtime contents: **20,590 triangles, 21,961 exported vertices, one material, 24 skin joints, three embedded textures and ten animation clips**. The supplied README's approximate 5K triangle count and advertised animation names do not match the archive; the numbers and mappings here come from inspecting the GLB.
 
