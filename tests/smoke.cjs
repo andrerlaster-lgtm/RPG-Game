@@ -138,6 +138,41 @@ const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok 
   const fight = await ev(() => { const g = state.guards[0], p = state.player; p.x = g.x + 30; p.y = g.y; g.dir = 0; g.state = 'alert'; g.meter = 1; for (let i = 0; i < 600 && state.mode === 'field'; i++) { state.time += 1 / 60; p.x = g.x + 26; p.y = g.y; updateGuard(g, 1 / 60); } return state.mode; });
   check('a guard catching ZAY starts a battle', fight === 'battle' || fight === 'dialog', fight);
 
+  // ---- The battle, in the 3D street ----
+  await until(() => state.mode === 'battle' && B.intro <= 0);
+  check('the battle is drawn in 3D, with the 2D layer on top for numbers', await until(() => !R3D.canvas.hidden && !document.getElementById('game').hidden && R3D.debug().calls > 20));
+  const staged = await ev(() => B.enemies.every((e) => e.guard.battleHome && !collides({ x: e.guard.battleHome.x, y: e.guard.battleHome.y, r: 10 })));
+  check('the guards line up on open, walkable ground', staged);
+  // Battle rules, stepped by hand so the result doesn't depend on this machine's speed.
+  const timed = await ev(() => {
+    const step = (secs) => { for (let i = 0; i < secs * 60; i++) { B.t += 1 / 60; const a = B.anim; if (!a) break; a.t += 1 / 60; if (!a.applied && a.t >= a.hit) { a.applied = true; apply(a); } if (a.t >= a.dur) { a.actor.atb = 0; B.anim = null; } } };
+    B.intro = 0; B.menu = null; const zay = state.party[0], foe = B.enemies.find((e) => e.alive);
+    foe.hp = foe.maxHp; zay.hp = zay.maxHp;
+    // a precise hit: pressed right on the blow
+    B.anim = { type: 'hit', label: 'Hit', actor: zay, targets: [foe], t: 0, dur: 0.95, hit: 0.55, applied: false, timed: true, press: 0.55 };
+    step(1.2);
+    const precise = B.precise;
+    // a press far too early does nothing
+    B.anim = { type: 'hit', label: 'Hit', actor: zay, targets: [foe], t: 0, dur: 0.95, hit: 0.55, applied: false, timed: true, press: 0.1 };
+    step(1.2);
+    // a block: the guard's blow is half stopped
+    const before = zay.hp;
+    enemyTurn(foe); B.anim.press = B.anim.hit; step(1.2);
+    return { precise, after: B.precise, blocked: B.blocked, took: before - zay.hp };
+  });
+  check('a press on the blow makes a precise hit', timed.precise === 1);
+  check('a press far too early does not', timed.after === 1);
+  check('a press on a guard\'s blow blocks it', timed.blocked === 1 && timed.took > 0, `took ${timed.took}`);
+  const single = await ev(() => { B.anim = null; B.enemies.forEach((e, i) => { e.alive = !i; e.hp = i ? 0 : e.maxHp; }); const zay = state.party[0]; openMenu(zay); B.menu.index = 0; confirmMenu(); return { anim: !!B.anim, stage: B.menu && B.menu.stage }; });
+  check('with one guard left, Hit goes straight to him (no target to pick)', single.anim === true, JSON.stringify(single));
+  const won = await ev(() => { B.anim = null; B.enemies.forEach((e) => { e.alive = false; e.hp = 0; }); checkEnd(); const r = B.result; endBattle(); return { r, mode: state.mode, down: B.guardRefs.every((g) => g.state === 'down') }; });
+  check('winning returns to the street with the guards knocked out', won.r === 'win' && won.mode === 'field' && won.down, JSON.stringify(won));
+  check('the field view is back after the fight', await until(() => R3D.canvas.hidden === false && document.getElementById('game').hidden && state.mode === 'field'));
+  // The same fight in Classic still uses the 2D battle screen.
+  const classicFight = await ev(() => { SETTINGS.view = 'classic'; const g = state.guards.find((q) => q.state !== 'down'); if (!g) return 'no guard'; const p = state.player; p.invuln = 0; g.state = 'alert'; g.meter = 1; for (let i = 0; i < 600 && state.mode === 'field'; i++) { p.x = g.x + 26; p.y = g.y; updateGuard(g, 1 / 60); } return state.mode; });
+  check('in Classic, a fight still uses the 2D battle screen', classicFight === 'battle' && await until(() => R3D.canvas.hidden && !document.getElementById('game').hidden), classicFight);
+  await ev(() => { SETTINGS.view = '3d'; });
+
   // ---- Views and settings ----
   await page.waitForTimeout(3000);   // let the battle intro finish before leaving it, or it switches the mode back
   await ev(() => { state.mode = 'field'; B.active = false; document.getElementById('battle-ui').hidden = true; state.guards.forEach((g) => { g.state = 'patrol'; g.meter = 0; }); });

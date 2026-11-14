@@ -90,6 +90,10 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: none; }
 canvas { display: block; }
+/* The 3D and 2D canvases share the screen; in a 3D battle the 2D one draws numbers and cursors on top. */
+#game3d, #game { position: fixed; inset: 0; }
+/* A line spoken during a battle goes at the top, clear of the battle menus. */
+#battle-ui:not([hidden]) ~ #dialog { top: max(14px, env(safe-area-inset-top)); bottom: auto; }
 button { font: inherit; color: inherit; cursor: pointer; }
 button:focus { outline: none; }
 button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(--focus-ring); }

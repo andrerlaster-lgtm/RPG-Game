@@ -5,8 +5,12 @@
 
 const B = {
   active: false, enemies: [], party: [], anim: null, menu: null, popups: [], fx: [],
-  result: null, guardRefs: [], intro: 0, t: 0, msgT: 0, exitT: 0, rewards: null
+  result: null, guardRefs: [], intro: 0, t: 0, msgT: 0, exitT: 0, rewards: null,
+  stage: null, tap: false, precise: 0, blocked: 0
 };
+
+// Timed presses: an attack or a guard's swing lands at a.hit seconds; pressing within this many seconds of it counts.
+const TIMING_WINDOW = 0.12;
 
 const bui = {
   root: document.getElementById('battle-ui'),
@@ -45,13 +49,15 @@ function startBattle(trigger) {
     .slice(0, 3);
   state.mode = 'battle';
   state.battles += 1;
-  Object.assign(B, { active: true, anim: null, menu: null, popups: [], fx: [], result: null, guardRefs: group, intro: 0.9, t: 0, exitT: 0, rewards: null });
+  Object.assign(B, { active: true, anim: null, menu: null, popups: [], fx: [], result: null, guardRefs: group, intro: 0.9, t: 0, exitT: 0, rewards: null, tap: false, precise: 0, blocked: 0 });
+  B.stage = stageBattle(group);
   B.enemies = group.map((g) => {
     const def = ENEMIES[g.kind] || ENEMIES.guard;
     return { ...def, side: 'enemy', hp: def.maxHp, atb: randBetween(0, 35), alive: true, fade: 0, stolen: false, guard: g, flash: 0 };
   });
   B.party = state.party;
   B.party.forEach((m) => { m.side = 'party'; m.atb = m.alive ? randBetween(35, 70) : 0; m.flash = 0; });
+  if (window.R3D && R3D.startBattle) R3D.startBattle();
   hudEls.hud.hidden = true;
   document.getElementById('touch').hidden = true;
   document.getElementById('toast').hidden = true;
@@ -87,11 +93,43 @@ function endBattle() {
   }
   B.active = false;
   state.mode = 'field';
+  if (window.R3D) R3D.resetCamera();   // back behind ZAY
   setMusic('night');
   bui.root.hidden = true;
   hudEls.hud.hidden = false;
   document.getElementById('touch').hidden = !isTouch;
   hudCache = '';
+}
+
+// Where everyone stands. ZAY keeps his spot; the guards line up a couple of tiles in front of him, across the
+// most open stretch of street nearby, so the 3D camera can watch side-on. Spots are always walkable, and the
+// guards really end up there (they stay there, knocked out or stunned, after the fight).
+function stageBattle(group) {
+  const p = state.player, T = TILE;
+  const free = (x, y) => !collides({ x, y, r: 10 });
+  const clearAlong = (a, from, to) => { let n = 0; for (let d = from; d <= to; d += 8) n += free(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d) ? 1 : 0; return n; };
+  const toward = group.length ? Math.atan2(group[0].y - p.y, group[0].x - p.x) : p.dir;
+  let best = toward, score = -1;
+  for (let k = 0; k < 16; k++) {
+    const a = toward + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.PI / 8;
+    // open ground ahead (where the guards stand) and to either side of it (room for three)
+    const sc = clearAlong(a, 16, 3 * T) * 2 + clearAlong(a + Math.PI / 2, 8, 2 * T) + clearAlong(a - Math.PI / 2, 8, 2 * T) - k * 0.15;
+    if (sc > score) { score = sc; best = a; }
+  }
+  const ax = Math.cos(best), ay = Math.sin(best), px = -ay, py = ax;
+  const slots = [[2.3, 0], [2.7, 1.15], [2.7, -1.15], [3.3, 0.55], [3.3, -0.55]];
+  const homes = [];
+  for (const g of group) {
+    let spot = null;
+    for (const [f, side] of slots) {
+      const x = p.x + (ax * f + px * side) * T, y = p.y + (ay * f + py * side) * T;
+      if (free(x, y) && !homes.some((h) => Math.hypot(h.x - x, h.y - y) < 0.9 * T)) { spot = { x, y }; break; }
+    }
+    if (!spot) spot = { x: g.x, y: g.y };   // nowhere better: fight from where he stands
+    homes.push(spot);
+    g.battleHome = spot;
+  }
+  return { axis: best, hero: { x: p.x, y: p.y } };
 }
 
 // ---------- Commands ----------
@@ -139,7 +177,11 @@ function confirmMenu() {
     const opt = menu.options[menu.index];
     if (opt.disabled) { play('uiError'); return; }
     play('uiConfirm', { vol: 0.7 });
-    if (opt.type === 'hit' || opt.type === 'steal') return chooseTarget('enemy', { type: opt.type, label: opt.label });
+    if (opt.type === 'hit' || opt.type === 'steal') {
+      const foes = aliveOn('enemy');
+      if (foes.length === 1) return execute({ type: opt.type, label: opt.label, targets: foes });   // only one left: no need to pick
+      return chooseTarget('enemy', { type: opt.type, label: opt.label });
+    }
     if (opt.type === 'slash') return execute({ type: 'slash', label: 'Slash', targets: aliveOn('enemy') });
     if (opt.type === 'run') return execute({ type: 'run', label: 'Run', targets: [] });
     if (opt.type === 'magic') {
@@ -196,8 +238,12 @@ function execute(action) {
   B.menu = null;
   if (action.type === 'magic') actor.mp -= SPELLS[action.spell].mp;
   if (action.type === 'item') state.items[action.item] -= 1;
-  B.anim = { ...action, actor, t: 0, dur: action.type === 'magic' ? 1.0 : 0.8, hit: action.type === 'magic' ? 0.55 : 0.4, applied: false };
+  const timed = action.type === 'hit' || action.type === 'slash';
+  B.anim = { ...action, actor, t: 0, dur: action.type === 'magic' ? 1.0 : timed ? 0.95 : 0.8, hit: action.type === 'magic' ? 0.55 : timed ? 0.55 : 0.4, applied: false, timed, press: null };
+  B.tap = false;
   if (action.type !== 'hit') showMsg(action.label);
+  else if (state.battles <= 3 && !B.precise) showMsg('Press as the ring closes for a precise hit');
+  if (window.R3D && R3D.playHero && actor.side === 'party') R3D.playHero({ hit: 'attack', slash: 'attack', steal: 'interact', magic: 'throw', item: 'interact' }[action.type] || 'interact');
   renderBattleUI();
 }
 
@@ -250,15 +296,26 @@ function useItemOn(name, target) {
 function apply(a) {
   const actor = a.actor;
   const targets = a.targets.filter((t) => t.alive || a.type === 'item');
+  // A press within TIMING_WINDOW of the blow: ZAY's attacks hit harder, a guard's blow is half blocked.
+  const onTime = a.timed && a.press !== null && Math.abs(a.press - a.hit) <= TIMING_WINDOW;
+  const bonus = onTime ? (actor.side === 'party' ? 1.5 : 0.5) : 1;
+  if (onTime) {
+    B.precise += actor.side === 'party' ? 1 : 0; B.blocked += actor.side === 'party' ? 0 : 1;
+    B.fx.push({ kind: 'timing', target: actor.side === 'party' ? (targets[0] || actor) : targets[0], t: 0, color: actor.side === 'party' ? '#ffe08a' : '#9fd3ff' });
+    play('clang', { vol: 0.6 });
+    if (actor.side !== 'party' && window.R3D && R3D.playHero) R3D.playHero('dodge');
+  }
   if (a.type === 'hit') {
     const t = targets[0] || aliveOn(actor.side === 'party' ? 'enemy' : 'party')[0];
     if (!t) return;
-    const d = damage(stat(actor, 'atk'), stat(t, 'def'));
+    const d = damage(stat(actor, 'atk'), stat(t, 'def'), bonus);
+    if (onTime) popup(t, actor.side === 'party' ? 'Precise!' : 'Blocked', actor.side === 'party' ? '#ffe08a' : '#9fd3ff', -26);
     hurt(t, d.amount, d.crit);
     if (actor.side === 'party') play(d.crit ? 'clang' : (Math.random() < 0.5 ? 'slice' : 'slice2'), { vol: d.crit ? 0.8 : 1 });
     else { play('chop'); play('thump', { delay: 0.02 }); }
   } else if (a.type === 'slash') {
-    for (const t of aliveOn('enemy')) { const d = damage(stat(actor, 'atk'), stat(t, 'def'), 0.85); hurt(t, d.amount, d.crit); }
+    for (const t of aliveOn('enemy')) { const d = damage(stat(actor, 'atk'), stat(t, 'def'), 0.85 * bonus); hurt(t, d.amount, d.crit); }
+    if (onTime && aliveOn('enemy')[0]) popup(aliveOn('enemy')[0], 'Precise!', '#ffe08a', -26);
     play('draw'); play('slice', { delay: 0.12 }); play('slice2', { delay: 0.22 });
   } else if (a.type === 'magic') {
     const spell = SPELLS[a.spell];
@@ -317,7 +374,9 @@ function enemyTurn(e) {
   const targets = aliveOn('party');
   if (!targets.length) return;
   const t = targets[Math.floor(Math.random() * targets.length)];
-  B.anim = { type: 'hit', label: 'Attack', actor: e, targets: [t], t: 0, dur: 0.8, hit: 0.42, applied: false };
+  B.anim = { type: 'hit', label: 'Attack', actor: e, targets: [t], t: 0, dur: 1.0, hit: 0.62, applied: false, timed: true, press: null };
+  B.tap = false;
+  if (state.battles <= 3 && !B.blocked) showMsg('Press as the ring closes to block');
 }
 
 function checkEnd() {
@@ -388,8 +447,11 @@ function showResult() {
   bui.resultBtn.focus({ preventScroll: true });
 }
 
+// On a phone, a tap anywhere (except a button) during a timed blow counts as the press.
+window.addEventListener('pointerdown', (e) => { if (B.active && B.anim && B.anim.timed && !e.target.closest('button')) B.tap = true; }, true);
+
 // ---------- Update ----------
-function popup(target, text, color) { B.popups.push({ target, text, color, t: 0 }); }
+function popup(target, text, color, lift = 0) { B.popups.push({ target, text, color, t: 0, lift }); }
 function showMsg(text) { bui.msg.textContent = text; bui.msg.hidden = false; B.msgT = 1.4; }
 
 function handleBattleInput() {
@@ -414,6 +476,17 @@ function updateBattle(dt) {
   B.fx = B.fx.filter((f) => f.t < 0.8);
   [...B.enemies, ...B.party].forEach((c) => { c.flash = Math.max(0, (c.flash || 0) - dt); if (!c.alive && c.side === 'enemy') c.fade = Math.min(1, c.fade + dt * 1.6); });
   if (B.msgT > 0) { B.msgT -= dt; if (B.msgT <= 0) bui.msg.hidden = true; }
+  // Everyone squares up: guards step to their spots and face ZAY; ZAY faces them.
+  if (B.stage) {
+    const p = state.player, k = Math.min(1, dt * 7);
+    p.dir += angDiff(p.dir, B.stage.axis) * k;
+    for (const e of B.enemies) {
+      const g = e.guard, h = g.battleHome;
+      if (!h) continue;
+      g.x += (h.x - g.x) * k; g.y += (h.y - g.y) * k;
+      g.dir += angDiff(g.dir, Math.atan2(p.y - g.y, p.x - g.x)) * k;
+    }
+  }
   if (B.intro > 0) { B.intro -= dt; return; }
   handleBattleInput();
   if (B.result === 'run' && B.exitT > 0) { B.exitT -= dt; if (B.exitT <= 0) endBattle(); return; }
@@ -422,6 +495,10 @@ function updateBattle(dt) {
   if (B.anim) {
     const a = B.anim;
     a.t += dt;
+    // The first press during a timed blow is the one that counts (so mashing doesn't work).
+    const press = B.tap || pressed.has('enter') || pressed.has('z') || pressed.has(' ') || pressed.has('e');
+    B.tap = false;
+    if (a.timed && press && a.press === null && !a.applied) a.press = a.t;
     if (!a.applied && a.t >= a.hit) { a.applied = true; apply(a); renderBattleUI(); }
     if (a.t >= a.dur) {
       a.actor.atb = 0;
@@ -580,10 +657,33 @@ function battlePositions(areaH) {
   place(B.party, 0.74);
 }
 
-function renderBattle() {
+// Where each fighter stands on screen when the 3D view draws the fight: feet position and a size factor
+// matching the 2D figures (about 100 units tall), from render3d's camera.
+function battlePositions3d() {
+  const place = (c, obj) => {
+    const pt = R3D.project(obj.x, obj.y);
+    c.bx = pt.x; c.by = pt.y; c.bs = Math.max(0.45, Math.min(2.2, pt.px / 100));
+  };
+  B.enemies.forEach((e) => place(e, e.guard));
+  B.party.forEach((m) => place(m, state.player));
+}
+
+// 2D view draws everything; with over3d the 3D scene is already drawn underneath and this only adds the
+// overlays (numbers, cursor, spell sparkles, the timing ring and the opening flash) on a see-through canvas.
+function renderBattle(over3d = false) {
   const areaH = Math.max(200, vh - (bui.root.offsetHeight || 0));
-  const s = Math.max(0.72, Math.min(1.5, areaH / 360));
+  let s = Math.max(0.72, Math.min(1.5, areaH / 360));
   const quake = (B.shake || 0) ** 2 * 8;
+  if (over3d) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    battlePositions3d();
+    const all = [...B.enemies, ...B.party];
+    s = all.reduce((sum, c) => sum + c.bs, 0) / Math.max(1, all.length);
+    drawBattleOverlays(s, areaH, true);
+    return;
+  }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#07080f';
   ctx.fillRect(0, 0, vw, vh);
@@ -642,9 +742,13 @@ function renderBattle() {
     ctx.restore();
   }
   for (const m of [...B.party].sort((a, b) => a.by - b.by)) drawBattleHero(m.bx + lunge(m), m.by, s, m, B.menu && B.menu.actor === m);
+  drawBattleOverlays(s, areaH, false);
+}
 
+function drawBattleOverlays(s, areaH, over3d) {
   // Spell effects
   for (const f of B.fx) {
+    if (f.kind === 'timing' || !f.target || f.target.bx == null) continue;
     const t = f.target, k = f.t / 0.8;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -686,10 +790,46 @@ function renderBattle() {
     ctx.strokeStyle = 'rgba(0,0,0,.8)';
     ctx.fillStyle = p.color;
     ctx.globalAlpha = 1 - Math.max(0, k - 0.6) / 0.4;
-    const y = p.target.by - 54 * s - Ease.expoOut(Math.min(1, k * 1.6)) * 22 * s;
+    if (p.target.bx == null) continue;
+    const y = p.target.by - 54 * s - (p.lift || 0) * s - Ease.expoOut(Math.min(1, k * 1.6)) * 22 * s;
     ctx.strokeText(p.text, p.target.bx, y);
     ctx.fillText(p.text, p.target.bx, y);
     ctx.globalAlpha = 1;
+  }
+
+  // Timing ring: closes on the target as the blow lands; gold when a press now would count.
+  const a = B.anim;
+  if (a && a.timed && !a.applied) {
+    const t = a.actor.side === 'party' ? (a.targets[0] || aliveOn('enemy')[0]) : a.targets[0];
+    if (t && t.bx != null) {
+      const left = a.hit - a.t, ready = Math.abs(left) <= TIMING_WINDOW;
+      const r = (22 + Math.max(0, left) * 150) * s;
+      const y = t.by - 40 * s;
+      ctx.save();
+      ctx.lineWidth = 3 * Math.max(0.8, s);
+      ctx.strokeStyle = 'rgba(0,0,0,.55)';
+      ctx.beginPath(); ctx.arc(t.bx, y, 22 * s, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = a.press !== null ? 'rgba(200,200,200,.5)' : ready ? '#ffe08a' : (a.actor.side === 'party' ? 'rgba(255,224,138,.75)' : 'rgba(159,211,255,.8)');
+      ctx.lineWidth = (ready ? 5 : 3) * Math.max(0.8, s);
+      ctx.beginPath(); ctx.arc(t.bx, y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  // A precise hit or a block: a bright burst on the target.
+  for (const f of B.fx) {
+    if (f.kind !== 'timing' || !f.target || f.target.bx == null) continue;
+    const k = f.t / 0.8;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = f.color; ctx.globalAlpha = 1 - k; ctx.lineWidth = 4 * s;
+    ctx.beginPath(); ctx.arc(f.target.bx, f.target.by - 40 * s, (22 + k * 60) * s, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Opening flash in 3D (the camera swing does the rest); the 2D view keeps its swirl.
+  if (over3d) {
+    if (B.intro > 0) { ctx.fillStyle = `rgba(255,255,255,${Math.max(0, B.intro - 0.55) * 2.2})`; ctx.fillRect(0, 0, vw, vh); }
+    return;
   }
 
   // Encounter swirl
