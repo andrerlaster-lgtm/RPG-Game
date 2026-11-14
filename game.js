@@ -134,12 +134,12 @@ function plantTrees(objects) {
   const clearOf = (px, py) => objects.every((o) => {
     if (o.polyline || o.polygon) {
       const pts = (o.polyline || o.polygon).map((q) => ({ x: o.x + q.x, y: o.y + q.y }));
-      for (let i = 0; i < pts.length; i++) if (segDist(px, py, pts[i], pts[Math.min(pts.length - 1, i + 1)]) < 58) return false;
-      return o.polygon ? segDist(px, py, pts[pts.length - 1], pts[0]) >= 58 : true;
+      for (let i = 0; i < pts.length; i++) if (segDist(px, py, pts[i], pts[Math.min(pts.length - 1, i + 1)]) < 44) return false;
+      return o.polygon ? segDist(px, py, pts[pts.length - 1], pts[0]) >= 44 : true;
     }
     const w = o.width || 0, h = o.height || 0;
     const nx = Math.max(o.x, Math.min(px, o.x + w)), ny = Math.max(o.y, Math.min(py, o.y + h));
-    return Math.hypot(px - nx, py - ny) >= 72;
+    return Math.hypot(px - nx, py - ny) >= 60;
   });
   for (let ty = 2; ty < H - 2; ty++) for (let tx = 2; tx < W - 2; tx++) {
     const t = grid[ty][tx];
@@ -1649,6 +1649,7 @@ function frame(now) {
       updateHud();
     }
   }
+  drawMinimap();
   pressed.clear();
   const field3d = !!LEVEL && state.mode !== 'battle' && use3D();
   show3D(field3d);

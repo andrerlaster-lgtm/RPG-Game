@@ -963,5 +963,5 @@ if (renderer) {
     hiddenS += ((p.hidden ? 1 : 0) - hiddenS) * k;
   }
 
-  window.R3D = { ready: true, render, setLook, setQuality, get quality() { return qName; }, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
+  window.R3D = { ready: true, render, setLook, setQuality, get quality() { return qName; }, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, figures: figures.size, post: post.on, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
 }

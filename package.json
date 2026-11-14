@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "deploy": "vercel deploy --target=preview --scope andrerlaster-lgtms-projects"
+    "deploy": "vercel deploy --target=preview --scope andrerlaster-lgtms-projects",
+    "test": "node tests/smoke.js"
   }
 }

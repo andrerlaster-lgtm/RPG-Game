@@ -18,6 +18,7 @@
   <script src="activities.js" defer></script>
   <script src="ui.js" defer></script>
   <script src="game.js" defer></script>
+  <script src="minimap.js" defer></script>
   <script src="battle.js" defer></script>
   <script src="inventory.js" defer></script>
   <script src="audio.js" defer></script>
@@ -41,7 +42,9 @@
       </div>
     </div>
     <p id="objective" class="objective"></p>
+    <canvas id="minimap" class="minimap" width="148" height="148" aria-hidden="true" hidden></canvas>
   </div>
+  <div id="banner" class="banner" role="status" hidden><span class="banner-title"></span><span class="banner-sub"></span></div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <div id="fade" class="fade" aria-hidden="true"></div>
 
@@ -65,16 +68,18 @@
       <div class="controls">
         <div><h2>Keyboard</h2>
           <ul>
-            <li><kbd>Arrow keys</kbd> move · <kbd>Shift</kbd> sprint (noisy)</li>
+            <li><kbd>W A S D</kbd> or <kbd>Arrow keys</kbd> move · <kbd>Shift</kbd> sprint (noisy)</li>
+            <li>Drag the picture to look around · mouse wheel zooms</li>
             <li><kbd>E</kbd> takedown from behind, vault, grab, give</li>
             <li><kbd>Q</kbd> / right-click throw a card to distract</li>
-            <li><kbd>Space</kbd> roll · <kbd>I</kbd> bag</li>
+            <li><kbd>Space</kbd> roll · <kbd>F</kbd> hop · <kbd>I</kbd> bag</li>
             <li>Battle: <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> confirm · <kbd>Esc</kbd> back</li>
           </ul>
         </div>
         <div><h2>Touch</h2>
           <ul>
-            <li>Wheel: drag to move (3D: up walks, sideways turns)</li>
+            <li>Wheel: push the way you want to go</li>
+            <li>Drag the picture to look around · pinch to zoom</li>
             <li>Use · Card · Sprint · Roll buttons · Bag (top)</li>
             <li>Battle: tap a command, then a target</li>
           </ul>
