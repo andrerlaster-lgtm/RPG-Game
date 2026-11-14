@@ -17,8 +17,8 @@
   <script src="people.js" defer></script>
   <script src="activities.js" defer></script>
   <script src="ui.js" defer></script>
+  <script src="traversal.js" defer></script>
   <script src="game.js" defer></script>
-  <script src="minimap.js" defer></script>
   <script src="battle.js" defer></script>
   <script src="inventory.js" defer></script>
   <script src="audio.js" defer></script>
@@ -42,9 +42,7 @@
       </div>
     </div>
     <p id="objective" class="objective"></p>
-    <canvas id="minimap" class="minimap" width="148" height="148" aria-hidden="true" hidden></canvas>
   </div>
-  <div id="banner" class="banner" role="status" hidden><span class="banner-title"></span><span class="banner-sub"></span></div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <div id="fade" class="fade" aria-hidden="true"></div>
 
@@ -68,18 +66,17 @@
       <div class="controls">
         <div><h2>Keyboard</h2>
           <ul>
-            <li><kbd>W A S D</kbd> or <kbd>Arrow keys</kbd> move · <kbd>Shift</kbd> sprint (noisy)</li>
-            <li>Drag the picture to look around · mouse wheel zooms</li>
+            <li><kbd>WASD</kbd> move with camera · <kbd>Arrows</kbd> walk/turn · <kbd>Shift</kbd> sprint (noisy)</li>
             <li><kbd>E</kbd> takedown from behind, vault, grab, give</li>
             <li><kbd>Q</kbd> / right-click throw a card to distract</li>
-            <li><kbd>Space</kbd> roll · <kbd>F</kbd> hop · <kbd>I</kbd> bag</li>
+            <li><kbd>Space</kbd> roll · <kbd>I</kbd> bag</li>
+            <li>3D camera: drag the view · wheel or +/− zoom · C recenter</li>
             <li>Battle: <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> confirm · <kbd>Esc</kbd> back</li>
           </ul>
         </div>
         <div><h2>Touch</h2>
           <ul>
-            <li>Wheel: push the way you want to go</li>
-            <li>Drag the picture to look around · pinch to zoom</li>
+            <li>Wheel: drag to move (3D: up walks, sideways turns). Drag the open view to look around.</li>
             <li>Use · Card · Sprint · Roll buttons · Bag (top)</li>
             <li>Battle: tap a command, then a target</li>
           </ul>
@@ -165,11 +162,17 @@
         </span>
       </div>
       <div class="setting">
-        <span class="setting-label"><b>Graphics</b><small id="opt-quality-note">Shadows, glow and plants in the 3D view</small></span>
-        <span id="opt-quality" class="segmented" role="radiogroup" aria-label="Graphics quality">
-          <button type="button" role="radio" data-quality="auto">Auto</button>
+        <span class="setting-label"><b>Scene lighting</b><small>Visual preview; stealth still follows night rules</small></span>
+        <span class="segmented" role="radiogroup" aria-label="Scene lighting">
+          <button type="button" role="radio" data-lighting="night">Night</button>
+          <button type="button" role="radio" data-lighting="dusk">Dusk</button>
+          <button type="button" role="radio" data-lighting="day">Day</button>
+        </span>
+      </div>
+      <div class="setting">
+        <span class="setting-label"><b>Graphics quality</b><small>Low reduces shadows, lights and resolution</small></span>
+        <span class="segmented" role="radiogroup" aria-label="Graphics quality">
           <button type="button" role="radio" data-quality="low">Low</button>
-          <button type="button" role="radio" data-quality="medium">Med</button>
           <button type="button" role="radio" data-quality="high">High</button>
         </span>
       </div>

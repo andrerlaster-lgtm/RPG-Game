@@ -1,5 +1,21 @@
 # Third-party notices
 
+## Current temporary ZAY — Shadow the Rogue Assassin (custom game-use license)
+
+`models/zay/shadow-rogue.glb` incorporates the rigged character, texture maps and animation clips from [Grigory Petrov's Shadow pack](https://grigory-petrov.itch.io/shadowrogue). The creator discloses AI-assisted graphics. The archive license permits royalty-free use in games and commercial projects, prohibits raw-model resale, and makes credit optional. Original text: `models/zay/LICENSE-SHADOW.txt`. This asset is not CC0/MIT. Credit: **Rogue Assassin by Grigory Petrov**.
+
+Changes: repaired PBR texture connections, removed false emission, compressed/resized textures, smoothed split normals, baked tangents, removed horizontal root drift and added three ZAY gameplay gestures. Source and runtime SHA-256 hashes, evaluation, reproduction instructions and limitations are recorded in `docs/graphics/zay-shadow-rogue.md`. The source archive is not redistributed. The user's reference image was used for visual direction only and is not included.
+
+## Temporary ZAY rig — KayKit Adventurers 1.0 (CC0)
+
+`models/zay/rogue.glb` is the unmodified `Rogue_Hooded.glb` from [Kay Lousberg's official KayKit Adventurers repository](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0), commit `672074b73ba276876a19e8816ecdc5241817ab47`, under `addons/kaykit_character_pack_adventures/Characters/gltf/`.
+
+The model, embedded atlas and 76 embedded animation clips are released under [Creative Commons Zero 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Personal and commercial use are allowed; attribution is optional. The creator's original license notice is preserved in `models/zay/LICENSE.txt`. Credit: **Kay Lousberg / KayKit**.
+
+SHA-256: `93e6e25213009952276d9cf34f5d96a243767334c66f280db0433ddfabb91545` (3,597,652 bytes). Runtime changes hide crossbows/throwable equipment, normalize scale/orientation, adjust roughness, blend selected clips and remove horizontal root motion from cloned animation tracks. The source binary remains unchanged.
+
+This retained earlier visual-development placeholder does not redefine ZAY's canonical appearance or story. See `docs/graphics/major-overhaul.md` for evaluation and replacement instructions.
+
 ## Icons — unity-ui-toolkit-design-system
 
 The icons in `icons.js` come from https://github.com/sinanata/unity-ui-toolkit-design-system (fills changed to `currentColor`).
@@ -64,8 +80,6 @@ THE SOFTWARE.
 
 `vendor/three/addons/GLTFLoader.js` and `vendor/three/addons/BufferGeometryUtils.js` come from the same Three.js 0.169.0 package (`examples/jsm/`, MIT, same licence as above). The only change is their import lines, which point at `../three.module.min.js` and `./BufferGeometryUtils.js` so they load without an import map.
 
-The post-processing add-ons used by `post3d.js` (`EffectComposer.js`, `RenderPass.js`, `ShaderPass.js`, `UnrealBloomPass.js`, `OutputPass.js`, `Pass.js`, `MaskPass.js`, `CopyShader.js`, `LuminosityHighPassShader.js`, `OutputShader.js`) come from the same package (`examples/jsm/postprocessing/` and `examples/jsm/shaders/`, MIT). They sit flat in `vendor/three/addons/`, and again only their import lines were changed.
-
 
 ## 3D models — Polygonal Mind (CC0)
 
@@ -76,3 +90,9 @@ The post-processing add-ons used by `post3d.js` (`EffectComposer.js`, `RenderPas
 
 Changes: merged into one file, normal/roughness maps removed, colour textures shrunk to 256 px WebP, and geometry quantized (with gltf-transform). No attribution is required; credited here anyway.
 
+
+## ZAY prototype anatomy and skeleton — MPFB (CC0)
+
+`models/zay/zay-mock.glb` derives its anatomy, macro targets, game-engine skeleton and weights from [MakeHuman Community MPFB](https://github.com/makehumancommunity/mpfb2), commit `9de0707fdc88438d7c53a1a2ac7937d9221e2431`. Bundled graphical assets, including rigs and weights, are CC0. The source add-on is GPL and is not shipped in the game. Original asset license and explanatory license text are in `models/zay/LICENSE-MPFB-ASSETS.md` and `models/zay/MPFB-LICENSE-EXPLANATION.md`.
+
+Changes: selected male adult anatomy, custom pointed ears, fitted clothing, locs, tail, accessories, material-batched skinned meshes and seven original in-place animation prototypes. No third-party clothing/hair packs used. GLB SHA-256: `9eaef7631ebbcdd15f6a87cfdc5aef2f0c08ece6a1060c7d0219d1e680bef19b`.

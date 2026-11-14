@@ -229,17 +229,81 @@ async function openingScene() {
   toast('House Veyrane’s estate is in the Crown Quarter, east down this street.', 2800);
 }
 
+async function chooseLedgerVault(vault) {
+  const choice = await choose('zay', 'I can catch the coping with my tail. The road’s still open if I keep walking.', [
+    { text: 'Tail-vault the wall.', value: 'vault' },
+    { text: 'Keep looking for another way.', value: 'leave' }
+  ]);
+  if (choice === 'vault') vaultWall(vault);
+}
+
+async function scoutCountingHouse() {
+  const p = state.player;
+  const choice = await choose('zay', 'The counting-house door is across the garden. A lantern passes it every time the patrol comes around.', [
+    { text: 'Watch the patrol.', value: 'watch' },
+    ...(p.cards > 0 ? [{ text: 'Throw a card away from the door. (1 card)', value: 'card' }] : []),
+    { text: 'Keep moving.', value: 'leave' }
+  ]);
+  if (choice === 'watch') {
+    await say('zay', 'He turns back at the far end of the garden. I can go when the lantern turns with him.');
+  } else if (choice === 'card') {
+    throwQuestLure({ x: LEDGER_SCOUT.x + 128, y: LEDGER_SCOUT.y - 64 });
+  }
+}
+
 async function ledgerScene() {
-  await say('zay',
-    "Veyrane's ledger. Every debt in the Lantern Quarter, in tidy little rows.",
-    "There's Noe's page. Next to Veyrane's seal there's a second one I don't know. Silver ink.",
-    'Later. River first.');
+  const choice = await choose('zay', 'Noe’s account is halfway down the page. There’s a second seal beside Veyrane’s, stamped in silver.', [
+    { text: 'Take the ledger and go.', value: 'take' },
+    { text: 'Read the silver mark first. (Risk being spotted)', value: 'read' },
+    { text: 'Leave it for now.', value: 'leave' }
+  ]);
+  if (choice === 'leave') return;
+
+  const p = state.player;
+  state.ledgerTaken = true;
+  p.hasLedger = true;
+  play('book'); play('jComplete', { vol: 0.7, delay: 0.25 });
+  if (choice !== 'read') return;
+
+  state.deeds.readLedgerSeal = true;
+  const guard = state.guards.find((g) => g.state !== 'down' && g.state !== 'stunned' &&
+    dist(g, p) < 205 && lineOfSight(g.x, g.y, p.x, p.y));
+  if (guard) {
+    await say('zay', 'The mark is next to other Lantern Quarter accounts too. A lantern stops in the doorway.');
+    raiseAlarm(guard);
+  } else {
+    await say('zay', 'The mark is next to other Lantern Quarter accounts too. Footsteps pass the door. I tuck the book into my coat.');
+  }
+}
+
+async function ledgerBoatScene() {
+  const p = state.player;
+  if (!p.hasLedger) {
+    await say('zay', 'The boat’s ready. I’m leaving with the ledger or I’m not leaving.');
+    return;
+  }
+  const chased = state.guards.some((g) => g.state === 'alert');
+  const choice = await choose('zay', chased
+    ? 'They’re still after me. If I push off now, they’ll see where I’m headed.'
+    : 'The river boat knocks against the pier. The ledger’s dry. I can still wait for a better moment.', [
+    ...(!chased ? [{ text: 'Push off with the ledger.', value: 'board' }] : []),
+    ...(p.cards > 0 && !chased ? [{ text: 'Draw the patrol away first. (1 card)', value: 'card' }] : []),
+    { text: chased ? 'Get back to cover.' : 'Stay on the pier for now.', value: 'leave' }
+  ]);
+  if (choice === 'card') {
+    throwQuestLure({ x: BOAT.x - 96, y: BOAT.y - 64 });
+  } else if (choice === 'board') {
+    state.leaving = true;
+    await endingScene();
+    state.deeds.broughtLedger = true;
+    finish(true);
+  }
 }
 
 async function endingScene() {
   await say('zay',
-    'The boat slides off into the dark. Behind me, a lantern starts swinging at the counting house.',
-    "Noe's going to ask where this came from. I'll tell her I won it at cards.");
+    'The estate lights slip behind the bend. I take the book out of my coat and check the pages.',
+    'Still dry. Now for Noe.');
 }
 
 async function talkToKid() {
@@ -286,24 +350,46 @@ async function talkToKid() {
 }
 
 // ---------- Interaction prompt ("E" bubble over what you can use) ----------
+function ledgerQuestTarget(p) {
+  if (state.district !== 'crown-estate' || state.leaving) return null;
+  if (!state.ledgerTaken && dist(LEDGER_SPOT, p) < 40 &&
+    lineOfSight(p.x, p.y, LEDGER_SPOT.x, LEDGER_SPOT.y)) return LEDGER_SPOT;
+  if (!state.ledgerTaken && dist(LEDGER_SCOUT, p) < 40 &&
+    lineOfSight(p.x, p.y, LEDGER_SCOUT.x, LEDGER_SCOUT.y)) return LEDGER_SCOUT;
+  if ((!state.ledgerTaken || p.hasLedger) && dist(BOAT, p) < 70 &&
+    lineOfSight(p.x, p.y, BOAT.x, BOAT.y)) return BOAT;
+  return null;
+}
+
 function interactTarget() {
   const p = state.player;
+  const questTarget = ledgerQuestTarget(p);
+  if (questTarget) return questTarget;
   for (const c of state.chests) if (!c.opened && dist(c, p) < 40) return c;
   const n = npcNear(p);
   if (n) return n;
   const w = walkerNear(p);
   if (w && !w.robbed && behind(w, p)) return w;   // a clean lift is possible
-  if (!state.ledgerTaken && dist(LEDGER_SPOT, p) < 40) return LEDGER_SPOT;
   if (dist(KID, p) < 44) return KID;
   if (FENCE.x && dist(FENCE, p) < 44) return FENCE;
   for (const v of VAULTS) if (dist(v.wall, p) < 46) return v.wall;
   return null;
 }
+
+function interactLabel(target) {
+  if (target.isWalker) return 'Lift';
+  const use = isTouch ? 'Use' : 'E';
+  if (target === LEDGER_SCOUT) return `${use} · Scout`;
+  if (target === LEDGER_SPOT) return `${use} · Ledger`;
+  if (target === BOAT) return `${use} · Boat`;
+  return use;
+}
+
 function drawInteractPrompt() {
   if (state.mode !== 'field') return;
   const t = interactTarget();
   if (!t) return;
-  const label = t.isWalker ? 'Lift' : isTouch ? 'Use' : 'E';
+  const label = interactLabel(t);
   const bob = Math.sin(state.time * 5) * 1.5;
   ctx.font = '800 10px Barlow, sans-serif';
   const w = Math.max(16, ctx.measureText(label).width + 10);

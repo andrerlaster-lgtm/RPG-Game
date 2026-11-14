@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "deploy": "vercel deploy --target=preview --scope andrerlaster-lgtms-projects",
-    "test": "node tests/smoke.js"
+    "test": "node --test tests/*.test.cjs",
+    "check": "node tests/check.cjs",
+    "test:browser": "node tests/playtest.cjs"
   }
 }

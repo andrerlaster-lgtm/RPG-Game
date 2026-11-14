@@ -8,7 +8,7 @@ const TILE = 32;
 // Each district is a Tiled map in levels/ (list in districts.js), editable in Tiled (mapeditor.org).
 //   Tile layer "ground": tiles 1-7 = building, street, garden, hedge, floor, river, dock.
 //   Object layer "objects" (object Class/Type):
-//     start, lamp (radius), chest (item), coin (gold), cards (count), ledger, kid, boat,
+//     start, lamp (radius), chest (item), coin (gold), cards (count), ledger, ledger-scout, kid, boat,
 //     vault (a 2-point line across a wall), guard (polyline patrol route; kind = guard/captain),
 //     fence (the Blackwater shop), overhear (radius, lines = "text | text | text": guards talk nearby),
 //     exit (rectangle; to = district id, spawn = spawn name there), spawn (named arrival point),
@@ -29,11 +29,11 @@ let LABELS = [];
 let NPCS = [];
 let WALKERS = [];
 let PROPS = [];
-let FURN = new Set();   // tiles blocked by furniture (props) and trees
-let TREES = [];         // trees planted by plantTrees(): { x, y, paved }
+let FURN = new Set();   // tiles blocked by furniture (props)
 const BOAT = { x: 0, y: 0 };
 const KID = { x: 0, y: 0, helped: false };
 const LEDGER_SPOT = { x: 0, y: 0 };
+const LEDGER_SCOUT = { x: 0, y: 0 };
 const FENCE = { x: 0, y: 0 };
 
 const tileAt = (px, py) => {
@@ -95,7 +95,7 @@ function buildLevel(map) {
     return { a, b, wall: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   });
   // One-of-a-kind spots; a district without one parks it far off the map.
-  for (const [target, kind] of [[BOAT, 'boat'], [KID, 'kid'], [LEDGER_SPOT, 'ledger'], [FENCE, 'fence']]) {
+  for (const [target, kind] of [[BOAT, 'boat'], [KID, 'kid'], [LEDGER_SPOT, 'ledger'], [LEDGER_SCOUT, 'ledger-scout'], [FENCE, 'fence']]) {
     const o = of(kind)[0];
     Object.assign(target, o ? at(o) : { x: -1e5, y: -1e5 });
   }
@@ -115,45 +115,7 @@ function buildLevel(map) {
       for (let tx = Math.floor(pr.x / TILE); tx <= Math.floor((pr.x + pr.w - 1) / TILE); tx++) FURN.add(ty * W + tx);
   }
   GUARD_ROUTES = of('guard').map((o) => ({ kind: prop(o, 'kind', 'guard'), pts: line(o), escort: prop(o, 'escort', '') }));
-  plantTrees(objects);
   renderMap();
-}
-
-// Trees: planted by rule rather than drawn in Tiled, so every district gets some without editing its map.
-// A tree takes a whole tile and is solid (it joins FURN, so guards path round it too). It only goes where it
-// can't be in anyone's way: on garden tiles with open ground all round, or in the middle of a wide square,
-// and never near a Tiled object (lamps, people, chests, exits, spawns, furniture) or a patrol or walking route.
-function plantTrees(objects) {
-  TREES = [];
-  const open = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H && !solidTile(grid[ty][tx]) && !FURN.has(ty * W + tx);
-  const segDist = (px, py, a, b) => {
-    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
-    const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / l2));
-    return Math.hypot(px - a.x - dx * t, py - a.y - dy * t);
-  };
-  const clearOf = (px, py) => objects.every((o) => {
-    if (o.polyline || o.polygon) {
-      const pts = (o.polyline || o.polygon).map((q) => ({ x: o.x + q.x, y: o.y + q.y }));
-      for (let i = 0; i < pts.length; i++) if (segDist(px, py, pts[i], pts[Math.min(pts.length - 1, i + 1)]) < 44) return false;
-      return o.polygon ? segDist(px, py, pts[pts.length - 1], pts[0]) >= 44 : true;
-    }
-    const w = o.width || 0, h = o.height || 0;
-    const nx = Math.max(o.x, Math.min(px, o.x + w)), ny = Math.max(o.y, Math.min(py, o.y + h));
-    return Math.hypot(px - nx, py - ny) >= 60;
-  });
-  for (let ty = 2; ty < H - 2; ty++) for (let tx = 2; tx < W - 2; tx++) {
-    const t = grid[ty][tx];
-    if (t !== 'g' && t !== '.') continue;
-    const paved = t === '.', reach = paved ? 2 : 1, gap = paved ? 5 : 2.6;
-    const hv = (Math.imul(tx + 3, 7349) ^ Math.imul(ty + 5, 3571)) >>> 0;
-    if (hv % (paved ? 2 : 3) !== 0) continue;
-    let ok = true;
-    for (let j = -reach; j <= reach && ok; j++) for (let i = -reach; i <= reach; i++) if (!open(tx + i, ty + j) || (paved && grid[ty + j][tx + i] !== '.')) { ok = false; break; }
-    const c = centre(tx, ty);
-    if (!ok || TREES.some((q) => Math.hypot(q.x - c.x, q.y - c.y) < gap * TILE) || !clearOf(c.x, c.y)) continue;
-    TREES.push({ x: c.x, y: c.y, paved });
-  }
-  for (const q of TREES) FURN.add(Math.floor(q.y / TILE) * W + Math.floor(q.x / TILE));
 }
 
 // ---------- Canvas ----------
@@ -272,15 +234,6 @@ function renderMap() {
     }
   }
   for (const sh of SHADOWS) { m.fillStyle = sh.g; m.fillRect(...sh.rect); }
-  // Trees: a stone bed (in a square) or bare earth (in a garden), and a soft shadow under the crown.
-  for (const q of TREES) {
-    const sh = m.createRadialGradient(q.x, q.y, 6, q.x, q.y, 34);
-    sh.addColorStop(0, 'rgba(0,0,0,.5)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
-    m.fillStyle = sh; m.fillRect(q.x - 34, q.y - 34, 68, 68);
-    m.fillStyle = q.paved ? '#4a4852' : '#2a2018'; m.beginPath(); m.arc(q.x, q.y, 15, 0, Math.PI * 2); m.fill();
-    m.fillStyle = '#241a12'; m.beginPath(); m.arc(q.x, q.y, 11, 0, Math.PI * 2); m.fill();
-    m.fillStyle = '#3a2a20'; m.beginPath(); m.arc(q.x, q.y, 5, 0, Math.PI * 2); m.fill();
-  }
   // Hedges drawn as round bushes on top of the garden.
   for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
     if (grid[ty][tx] !== 'h') continue;
@@ -355,32 +308,20 @@ window.addEventListener('keydown', (e) => {
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(k)) e.preventDefault();
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
-  if ((k === 'p' || (k === 'escape' && state.mode === 'field')) && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
+  if (!e.repeat && (k === 'p' || (k === 'escape' && state.mode === 'field')) && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
 // Input map (like Godot's InputMap): gamepad buttons feed the same actions as keys.
 // Standard layout: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 9 Start, 12-15 d-pad.
 const PAD_MAP = {
-  field: { 0: 'e', 1: ' ', 2: 'q', 3: 'i', 4: 'shift', 5: 'shift', 9: 'p', 10: 'f', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
+  field: { 0: 'e', 1: ' ', 2: 'q', 3: 'i', 4: 'shift', 5: 'shift', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   inventory: { 0: 'enter', 1: 'escape', 3: 'i', 4: 'q', 5: 'e', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   dialog: { 0: 'enter', 1: 'enter', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   shop: { 0: 'enter', 1: 'escape', 4: 'q', 5: 'q', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   battle: { 0: 'enter', 1: 'escape', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' }
 };
 const padHeld = new Set();
-const padStick = { x: 0, y: 0 };
-// The 3D chase camera (render3d.js draws from it). yaw: which way it looks along the ground, pitch: how far
-// above ZAY it sits (radians), dist: how far back. `manual` counts down after you move it yourself, so the
-// camera doesn't fight your hand by swinging back behind ZAY straight away.
-const CAM3 = { yaw: -Math.PI / 2, pitch: 0.5, dist: 4.3, manual: 0 };
-const CAM_LIMITS = { pitchMin: 0.14, pitchMax: 1.28, distMin: 2.2, distMax: 7.5 };
-function orbitCamera(dYaw, dPitch) {
-  CAM3.yaw += dYaw;
-  CAM3.pitch = Math.max(CAM_LIMITS.pitchMin, Math.min(CAM_LIMITS.pitchMax, CAM3.pitch + dPitch));
-  CAM3.manual = 2.5;
-}
-function zoomCamera(k) { CAM3.dist = Math.max(CAM_LIMITS.distMin, Math.min(CAM_LIMITS.distMax, CAM3.dist * k)); }
 function pollGamepad() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const pad = Array.from(pads || []).find((g) => g && g.connected);
@@ -388,22 +329,13 @@ function pollGamepad() {
   if (pad) {
     const map = PAD_MAP[state.mode] || PAD_MAP.field;
     pad.buttons.forEach((b, i) => { if (b.pressed && map[i]) now.add(map[i]); });
-    const [ax = 0, ay = 0, rx = 0, ry = 0] = pad.axes;
-    const field = state.mode === 'field';
-    // In the field the left stick is analog (push a little to creep, all the way to walk) and the right
-    // stick swings the camera. In menus the left stick still acts like the d-pad.
-    padStick.x = field ? ax : 0; padStick.y = field ? ay : 0;
-    if (field) {
-      if (Math.abs(rx) > 0.18) orbitCamera(rx * 0.045, 0);
-      if (Math.abs(ry) > 0.18) orbitCamera(0, ry * 0.03);
-    } else {
-      const dead = 0.45;
-      if (ax < -dead) now.add('arrowleft');
-      if (ax > dead) now.add('arrowright');
-      if (ay < -dead) now.add('arrowup');
-      if (ay > dead) now.add('arrowdown');
-    }
-  } else padStick.x = padStick.y = 0;
+    const [ax = 0, ay = 0] = pad.axes;
+    const dead = 0.45;
+    if (ax < -dead) now.add('arrowleft');
+    if (ax > dead) now.add('arrowright');
+    if (ay < -dead) now.add('arrowup');
+    if (ay > dead) now.add('arrowdown');
+  }
   for (const k of now) if (!padHeld.has(k)) { pressed.add(k); keys.add(k); }
   for (const k of padHeld) if (!now.has(k)) keys.delete(k);
   padHeld.clear();
@@ -411,7 +343,7 @@ function pollGamepad() {
   if (pressed.has('p') && now.has('p') && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
 }
 window.addEventListener('gamepadconnected', () => toast('Controller connected', 1500));
-window.addEventListener('blur', () => { keys.clear(); if (state.running && !state.over && !state.paused) togglePause(); });
+window.addEventListener('blur', () => { resetTraversal(); if (state.running && !state.over && !state.paused) togglePause(); });
 canvas.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true; });
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 2) pressed.add('mouse-card');
@@ -497,13 +429,7 @@ function lineOfSight(ax, ay, bx, by) {
 function collides(e) {
   const x0 = Math.floor((e.x - e.r) / TILE), x1 = Math.floor((e.x + e.r) / TILE);
   const y0 = Math.floor((e.y - e.r) / TILE), y1 = Math.floor((e.y + e.r) / TILE);
-  // A round body against square tiles: only count a tile if the circle really overlaps it, so ZAY slips
-  // round corners instead of catching on them.
-  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
-    if (!isSolidAt(tx, ty)) continue;
-    const nx = Math.max(tx * TILE, Math.min(e.x, tx * TILE + TILE)), ny = Math.max(ty * TILE, Math.min(e.y, ty * TILE + TILE));
-    if ((e.x - nx) * (e.x - nx) + (e.y - ny) * (e.y - ny) < e.r * e.r) return true;
-  }
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (isSolidAt(tx, ty)) return true;
   // People stand their ground.
   if (state && state.npcs) for (const n of state.npcs) if (Math.hypot(n.x - e.x, n.y - e.y) < e.r + 9) return true;
   return false;
@@ -567,90 +493,88 @@ function noise(x, y, radius) {
 // ---------- Player ----------
 // The 3D view (render3d.js) takes over drawing the field once WebGL is up, unless Options says Classic.
 const use3D = () => SETTINGS.view === '3d' && !!window.R3D && window.R3D.ready;
-const WALK_SPEED = 118, SPRINT_SPEED = 185;
-const JUMP_V = 3.4, GRAVITY = 11;   // tiles a second (the 3D view lifts ZAY by p.z; the rules don't change in the air)
+function resetTraversal() {
+  // Preserve padHeld so a held Start button cannot retrigger pause on every poll.
+  keys.clear(); pressed.clear(); stickRelease();
+  document.querySelectorAll('.is-held').forEach((el) => el.classList.remove('is-held'));
+  if (state.player) { state.player.vx = state.player.vy = 0; state.player.moving = false; }
+  if (window.R3D) R3D.cancelOrbit();
+}
+const TURN_RATE = 3;   // radians a second, turning in the 3D view
 function updatePlayer(dt) {
   const p = state.player;
-  const three = use3D();
   let mx = 0, my = 0;
   const wheel = stick.on && Math.hypot(stick.x, stick.y) > 0.15;
-  const pad = Math.hypot(padStick.x, padStick.y) > 0.2;
-  // What the hands are asking for: ix = right, iy = forward (or screen-right / screen-up in Classic).
-  let ix = 0, iy = 0;
-  if (wheel) { ix = stick.x; iy = -stick.y; }
-  else if (pad) { ix = padStick.x; iy = -padStick.y; }
-  else {
-    ix = (keys.has('arrowright') || (three && keys.has('d')) ? 1 : 0) - (keys.has('arrowleft') || (three && keys.has('a')) ? 1 : 0);
-    iy = (keys.has('arrowup') || (three && keys.has('w')) ? 1 : 0) - (keys.has('arrowdown') || (three && keys.has('s')) ? 1 : 0);
+  const cameraMove = use3D() && ['w', 'a', 's', 'd'].some((key) => keys.has(key));
+  if (cameraMove) {
+    const forward = Number(keys.has('w')) - Number(keys.has('s'));
+    const right = Number(keys.has('d')) - Number(keys.has('a'));
+    const yaw = R3D.heading();
+    mx = Math.cos(yaw) * forward - Math.sin(yaw) * right;
+    my = Math.sin(yaw) * forward + Math.cos(yaw) * right;
+    if (mx || my) p.dir += angDiff(p.dir, Math.atan2(my, mx)) * Traversal.damp(16, dt);
+  } else if (use3D()) {
+    // Third person: Left/Right turn ZAY, Up walks forward, Down steps back.
+    // The wheel works the same way: push up to walk, sideways to turn, both to walk round a corner.
+    const turn = wheel ? Math.sign(stick.x) * Math.max(0, Math.abs(stick.x) - 0.15) / 0.85
+      : (keys.has('arrowright') ? 1 : 0) - (keys.has('arrowleft') ? 1 : 0);
+    p.dir += turn * TURN_RATE * dt;
+    const fwd = wheel ? (stick.y < 0 ? -stick.y : -stick.y * 0.6) * (Math.abs(stick.y) > 0.2 ? 1 : 0)
+      : (keys.has('arrowup') ? 1 : 0) - (keys.has('arrowdown') ? 0.6 : 0);
+    mx = Math.cos(p.dir) * fwd;
+    my = Math.sin(p.dir) * fwd;
+  } else if (wheel) {
+    mx = stick.x; my = stick.y;
+  } else {
+    if (keys.has('arrowup') || keys.has('w')) my -= 1;
+    if (keys.has('arrowdown') || keys.has('s')) my += 1;
+    if (keys.has('arrowleft') || keys.has('a')) mx -= 1;
+    if (keys.has('arrowright') || keys.has('d')) mx += 1;
   }
-  if (three) {
-    // Third person: you push the way you want to go on screen, and ZAY turns to run that way.
-    // Pushing sideways also swings the camera round behind him, unless you just moved the camera yourself.
-    CAM3.manual = Math.max(0, CAM3.manual - dt);
-    if (CAM3.manual <= 0 && Math.abs(ix) > 0.15) CAM3.yaw += ix * (iy < -0.3 ? 0.9 : 1.5) * dt;
-    const c = Math.cos(CAM3.yaw), sn = Math.sin(CAM3.yaw);
-    mx = c * iy - sn * ix;
-    my = sn * iy + c * ix;
-  } else { mx = ix; my = -iy; }
   const mag = Math.hypot(mx, my);
   p.moving = mag > 0.15;
   if (mag > 1) { mx /= mag; my /= mag; }
-  if (p.moving) {
-    const want = Math.atan2(my, mx);
-    // In 3D he turns smoothly (fast enough to feel instant on a tap); Classic snaps as before.
-    if (three) { const d = angDiff(p.dir, want); p.dir += Math.sign(d) * Math.min(Math.abs(d), 13 * dt); }
-    else p.dir = want;
-  }
-  if (!isTouch && mouse.has && !p.moving && !three) {
+  if (p.moving && !use3D()) p.dir = Math.atan2(my, mx);
+  if (!isTouch && mouse.has && !p.moving && !use3D()) {
     // Face the cursor when standing still so card throws aim naturally.
     p.dir = Math.atan2(mouse.wy - p.y, mouse.wx - p.x);
   }
 
   p.sprint = keys.has('shift');
   const inHedge = tileAt(p.x, p.y) === 'h';
-  let speed = p.sprint ? SPRINT_SPEED : WALK_SPEED;
+  let speed = p.sprint ? 185 : 118;
   if (inHedge) speed *= 0.6;
 
   p.dashCd -= dt; p.slashCd -= dt; p.invuln -= dt; p.slashT -= dt;
-  if ((pressed.has(' ') || pressed.has('touch-dash')) && p.dashCd <= 0 && !(p.z > 0)) {
-    if (p.moving) p.dir = Math.atan2(my, mx);   // roll the way you're pushing
+  if ((pressed.has(' ') || pressed.has('touch-dash')) && p.dashCd <= 0) {
     p.dashT = 0.17; p.dashCd = 0.8; p.invuln = Math.max(p.invuln, 0.2);
-    p.rollT = 0.42;                              // how long the tumble is drawn for
     play('cloth2', { vol: 0.7 }); play('swish');
   }
-  p.rollT = Math.max(0, (p.rollT || 0) - dt);
-  // A short hop (F, or click the left stick). It's for feel: walls, guards and noise work the same.
-  if ((pressed.has('f') || pressed.has('touch-jump')) && three && !(p.z > 0) && p.dashT <= 0) { p.vz = JUMP_V; p.z = 0.001; play('cloth', { vol: 0.5 }); }
-  if (p.z > 0) {
-    p.vz -= GRAVITY * dt; p.z += p.vz * dt;
-    if (p.z <= 0) { p.z = 0; p.vz = 0; p.landT = 0.18; if (!inHedge) playStep(true); }
-  }
-  p.landT = Math.max(0, (p.landT || 0) - dt);
-  const ox = p.x, oy = p.y;
+  const oldX = p.x, oldY = p.y;
   if (p.dashT > 0) {
-    p.dashT -= dt;
-    move(p, Math.cos(p.dir) * 520 * dt, Math.sin(p.dir) * 520 * dt);
-    p.vx = Math.cos(p.dir) * speed; p.vy = Math.sin(p.dir) * speed;
-  } else if (three) {
-    // Ease up to speed and back down again, so starting and stopping have a little weight.
-    const k = Math.min(1, (p.moving ? 11 : 15) * dt);
-    p.vx = (p.vx || 0) + (mx * speed - (p.vx || 0)) * k;
-    p.vy = (p.vy || 0) + (my * speed - (p.vy || 0)) * k;
-    if (!p.moving && Math.hypot(p.vx, p.vy) < 4) p.vx = p.vy = 0;
-    if (p.vx || p.vy) move(p, p.vx * dt, p.vy * dt);
-    // Walking into a wall kills the speed going into it, and keeps the slide along it.
-    if (dt > 0) { p.vx = (p.x - ox) / dt; p.vy = (p.y - oy) / dt; }
-  } else if (p.moving) {
-    move(p, mx * speed * dt, my * speed * dt);
-    p.vx = mx * speed; p.vy = my * speed;
-  } else p.vx = p.vy = 0;
-  p.speedNow = dt > 0 ? Math.hypot(p.x - ox, p.y - oy) / dt : 0;
+    const dashDt = Math.min(dt, p.dashT);
+    p.dashT = Math.max(0, p.dashT - dt);
+    p.vx = p.vy = 0;
+    move(p, Math.cos(p.dir) * 520 * dashDt, Math.sin(p.dir) * 520 * dashDt);
+  } else {
+    // Reach walk speed in ~0.12 s and brake in ~0.07 s. Classic retains direct movement.
+    const v = use3D() ? Traversal.velocity(p.vx || 0, p.vy || 0,
+      p.moving ? mx * speed : 0, p.moving ? my * speed : 0, p.moving ? 1000 : 1800, dt)
+      : { x: mx * speed, y: my * speed };
+    p.vx = v.x; p.vy = v.y;
+    move(p, v.x * dt, v.y * dt);
+    // Don't store momentum along a blocked axis: releasing at a wall must stop cleanly.
+    if (Math.abs(p.x - oldX) < 0.001) p.vx = 0;
+    if (Math.abs(p.y - oldY) < 0.001) p.vy = 0;
+  }
+  const travelled = Math.hypot(p.x - oldX, p.y - oldY);
+  p.moving = travelled > 0.01;
   if (p.moving && p.dashT <= 0) {
-    p.step += dt * (p.sprint ? 14 : 9);
-    p.stepT = (p.stepT || 0) - dt;
-    if (p.stepT <= 0 && !(p.z > 0)) {
+    p.step += travelled / 13;
+    p.stepT = (p.stepT || 0) - travelled;
+    if (p.stepT <= 0) {
       if (inHedge) play('rustle'); else playStep(p.sprint);
-      p.stepT = p.sprint ? 0.27 : 0.4;
+      p.stepT = p.sprint ? 50 : 47;
     }
   }
 
@@ -666,7 +590,10 @@ function updatePlayer(dt) {
 
   // Actions
   if (pressed.has('i') || pressed.has('tab')) { openInventory(); return; }
-  if (pressed.has('e') || pressed.has('touch-use')) use();
+  if (pressed.has('e') || pressed.has('touch-use')) {
+    use();
+    if (state.mode !== 'field') return;
+  }
   if (pressed.has('q') || pressed.has('mouse-card') || pressed.has('touch-card')) throwCard(pressed.has('mouse-card') || (pressed.has('q') && mouse.has));
 
   // Pickups
@@ -677,11 +604,6 @@ function updatePlayer(dt) {
     if (!c.taken && dist(c, p) < 20) { c.taken = true; p.cards += c.count; play('belt', { vol: 0.8 }); play('card', { delay: 0.05 }); toast(`+${c.count} cards`); }
   }
 
-  // Boat
-  if (Math.hypot(p.x - BOAT.x, p.y - BOAT.y) < 70) {
-    if (p.hasLedger && !state.leaving) { state.leaving = true; endingScene().then(() => finish(true)); }
-    else if (!state.ledgerTaken && !updatePlayer.boatHint) { toast("Not leaving without Veyrane's ledger."); updatePlayer.boatHint = true; }
-  } else updatePlayer.boatHint = false;
   checkExits(p);
 }
 
@@ -692,6 +614,11 @@ function behind(g, p) {
 
 function use() {
   const p = state.player;
+  const questTarget = ledgerQuestTarget(p);
+  if (questTarget === LEDGER_SPOT) { ledgerScene(); return; }
+  if (questTarget === LEDGER_SCOUT) { scoutCountingHouse(); return; }
+  if (questTarget === BOAT) { ledgerBoatScene(); return; }
+
   // 1. Silent takedown
   let best = null;
   for (const g of state.guards) {
@@ -710,23 +637,12 @@ function use() {
   // 2. Tail vault over the estate wall
   for (const v of VAULTS) {
     if (dist(v.wall, p) < 46) {
-      const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
-      p.x = dest.x; p.y = dest.y;
-      effect('vault', v.wall.x, v.wall.y);
-      play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
-      toast('Tail on the ledge, over the wall.');
+      if (state.district === 'crown-estate' && !state.ledgerTaken) chooseLedgerVault(v);
+      else vaultWall(v);
       return;
     }
   }
-  // 3. The ledger
-  if (!state.ledgerTaken && dist(LEDGER_SPOT, p) < 40) {
-    state.ledgerTaken = true;
-    p.hasLedger = true;
-    play('book'); play('jComplete', { vol: 0.7, delay: 0.25 });
-    ledgerScene();
-    return;
-  }
-  // 4. Chests
+  // 3. Chests
   for (const c of state.chests) {
     if (!c.opened && dist(c, p) < 40) {
       c.opened = true;
@@ -739,18 +655,29 @@ function use() {
       return;
     }
   }
-  // 5. The Soot kid (by the street stage in the Lantern Quarter)
+  // 4. The Soot kid (by the street stage in the Lantern Quarter)
   if (dist(KID, p) < 44) {
     talkToKid();
     return;
   }
-  // 6. The Blackwater fence
+  // 5. The Blackwater fence
   if (FENCE.x && dist(FENCE, p) < 44) { talkToFence(); return; }
-  // 7. People
+  // 6. People
   const n = npcNear(p);
   if (n) { talkTo(n); return; }
-  // 8. Nothing nearby
+  // 7. Nothing nearby
   if (tileAt(p.x, p.y) !== 'h') toast('Nothing to use here.', 1100);
+}
+
+function vaultWall(v) {
+  const p = state.player;
+  const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
+  p.x = dest.x; p.y = dest.y;
+  p.vx = p.vy = 0;
+  if (window.R3D) R3D.resetCamera();
+  effect('vault', v.wall.x, v.wall.y);
+  play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
+  toast('Tail on the ledge, over the wall.');
 }
 
 // A crime in front of the city watch: any watchman who can see ZAY or the spot turns hostile.
@@ -771,6 +698,7 @@ function witnessCrime(x, y, victim = null, radius = 230, watchOnly = false) {
 }
 
 function knockOut(g, silent) {
+  if (silent && window.R3D) R3D.playHero('attack');
   g.state = 'down';
   g.meter = 0;
   state.kos += 1;
@@ -786,10 +714,23 @@ function throwCard(aimAtMouse) {
   const p = state.player;
   if (p.cards <= 0) { toast('Out of cards.', 1000); return; }
   p.cards -= 1;
-  const a = aimAtMouse && !use3D() ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : use3D() && !p.moving ? (p.dir = CAM3.yaw) : p.dir;
-  p.throwT = 0.3;
+  if (window.R3D) R3D.playHero('throw');
+  const a = aimAtMouse && !use3D() ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : p.dir;
   state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(a) * 430, vy: Math.sin(a) * 430, life: 0.62, spin: 0 });
   play('card');
+}
+
+function throwQuestLure(landing) {
+  if (state.player.cards <= 0) return;
+  state.player.cards -= 1;
+  play('card');
+  landCardLure(landing.x, landing.y);
+}
+
+function landCardLure(x, y) {
+  noise(x, y, 175);
+  effect('card', x, y);
+  play('uiTick', { vol: 0.9 }); play('card', { delay: 0.02 });
 }
 
 function updateProjectiles(dt) {
@@ -808,9 +749,7 @@ function updateProjectiles(dt) {
     }
     if (!c.done && (solidTile(tileAt(c.x, c.y)) || c.life <= 0)) {
       c.done = true;
-      noise(c.x, c.y, 175);
-      effect('card', c.x, c.y);
-      play('uiTick', { vol: 0.9 }); play('card', { delay: 0.02 });
+      landCardLure(c.x, c.y);
     }
   }
   state.projectiles = state.projectiles.filter((c) => !c.done);
@@ -1112,8 +1051,6 @@ function render() {
   drawWater();
   drawFurniture();
   drawProps();
-  // Tree crowns, seen from above (see plantTrees).
-  for (const q of TREES) if (inView(q.x, q.y)) { ctx.fillStyle = 'rgba(38,74,47,.82)'; ctx.beginPath(); ctx.arc(q.x, q.y - 6, 24, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(58,106,60,.7)'; ctx.beginPath(); ctx.arc(q.x - 6, q.y - 13, 12, 0, Math.PI * 2); ctx.fill(); }
   for (const g of state.guards) if (inView(g.x, g.y)) drawCone(g);
   for (const g of state.guards) if (inView(g.x, g.y)) drawGuard(g);
   drawNpcs();
@@ -1595,6 +1532,7 @@ async function start(fromSave = false) {
   updateBagBadge();
 }
 function togglePause() {
+  resetTraversal();
   state.paused = !state.paused;
   suspendMusic(state.paused);
   document.getElementById('pause').hidden = !state.paused;
@@ -1639,17 +1577,19 @@ function frame(now) {
     else if (state.mode === 'loading') { /* a district is loading */ }
     else {
       updatePlayer(dt);
-      updateProjectiles(dt);
-      for (const g of state.guards) updateGuard(g, dt);
-      updateWalkers(dt);
-      updateBarks(dt);
-      checkOverhear();
-      for (const e of state.effects) e.t += dt;
-      state.effects = state.effects.filter((e) => e.t < 0.7);
-      updateHud();
+      if (state.mode === 'field') {
+        updateProjectiles(dt);
+        for (const g of state.guards) updateGuard(g, dt);
+        updateWalkers(dt);
+        updateBarks(dt);
+        checkOverhear();
+        for (const e of state.effects) e.t += dt;
+        state.effects = state.effects.filter((e) => e.t < 0.7);
+        updateHud();
+      }
     }
   }
-  drawMinimap();
+  if (state.paused || state.mode !== 'field') { state.player.vx = state.player.vy = 0; }
   pressed.clear();
   const field3d = !!LEVEL && state.mode !== 'battle' && use3D();
   show3D(field3d);
