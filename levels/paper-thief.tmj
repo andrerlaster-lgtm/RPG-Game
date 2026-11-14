@@ -11,7 +11,7 @@
  "type": "map",
  "version": "1.10",
  "nextlayerid": 3,
- "nextobjectid": 61,
+ "nextobjectid": 62,
  "properties": [
   {
    "name": "title",
@@ -3903,6 +3903,18 @@
      "type": "label",
      "x": 1806,
      "y": 1086,
+     "width": 0,
+     "height": 0,
+     "rotation": 0,
+     "visible": true,
+     "point": true
+    },
+    {
+     "id": 61,
+     "name": "Counting-house patrol overlook",
+     "type": "ledger-scout",
+     "x": 1648,
+     "y": 656,
      "width": 0,
      "height": 0,
      "rotation": 0,

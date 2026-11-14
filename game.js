@@ -8,7 +8,7 @@ const TILE = 32;
 // Each district is a Tiled map in levels/ (list in districts.js), editable in Tiled (mapeditor.org).
 //   Tile layer "ground": tiles 1-7 = building, street, garden, hedge, floor, river, dock.
 //   Object layer "objects" (object Class/Type):
-//     start, lamp (radius), chest (item), coin (gold), cards (count), ledger, kid, boat,
+//     start, lamp (radius), chest (item), coin (gold), cards (count), ledger, ledger-scout, kid, boat,
 //     vault (a 2-point line across a wall), guard (polyline patrol route; kind = guard/captain),
 //     fence (the Blackwater shop), overhear (radius, lines = "text | text | text": guards talk nearby),
 //     exit (rectangle; to = district id, spawn = spawn name there), spawn (named arrival point),
@@ -29,10 +29,12 @@ let LABELS = [];
 let NPCS = [];
 let WALKERS = [];
 let PROPS = [];
-let FURN = new Set();   // tiles blocked by furniture (props)
+let FURN = new Set();   // tiles blocked by furniture (props) and trees
+let TREES = [];         // trees planted by plantTrees(): { x, y, paved }
 const BOAT = { x: 0, y: 0 };
 const KID = { x: 0, y: 0, helped: false };
 const LEDGER_SPOT = { x: 0, y: 0 };
+const LEDGER_SCOUT = { x: 0, y: 0 };
 const FENCE = { x: 0, y: 0 };
 
 const tileAt = (px, py) => {
@@ -94,7 +96,7 @@ function buildLevel(map) {
     return { a, b, wall: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   });
   // One-of-a-kind spots; a district without one parks it far off the map.
-  for (const [target, kind] of [[BOAT, 'boat'], [KID, 'kid'], [LEDGER_SPOT, 'ledger'], [FENCE, 'fence']]) {
+  for (const [target, kind] of [[BOAT, 'boat'], [KID, 'kid'], [LEDGER_SPOT, 'ledger'], [LEDGER_SCOUT, 'ledger-scout'], [FENCE, 'fence']]) {
     const o = of(kind)[0];
     Object.assign(target, o ? at(o) : { x: -1e5, y: -1e5 });
   }
@@ -114,7 +116,45 @@ function buildLevel(map) {
       for (let tx = Math.floor(pr.x / TILE); tx <= Math.floor((pr.x + pr.w - 1) / TILE); tx++) FURN.add(ty * W + tx);
   }
   GUARD_ROUTES = of('guard').map((o) => ({ kind: prop(o, 'kind', 'guard'), pts: line(o), escort: prop(o, 'escort', '') }));
+  plantTrees(objects);
   renderMap();
+}
+
+// Trees: planted by rule rather than drawn in Tiled, so every district gets some without editing its map.
+// A tree takes a whole tile and is solid (it joins FURN, so guards path round it too). It only goes where it
+// can't be in anyone's way: on garden tiles with open ground all round, or in the middle of a wide square,
+// and never near a Tiled object (lamps, people, chests, exits, spawns, furniture) or a patrol or walking route.
+function plantTrees(objects) {
+  TREES = [];
+  const open = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H && !solidTile(grid[ty][tx]) && !FURN.has(ty * W + tx);
+  const segDist = (px, py, a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / l2));
+    return Math.hypot(px - a.x - dx * t, py - a.y - dy * t);
+  };
+  const clearOf = (px, py) => objects.every((o) => {
+    if (o.polyline || o.polygon) {
+      const pts = (o.polyline || o.polygon).map((q) => ({ x: o.x + q.x, y: o.y + q.y }));
+      for (let i = 0; i < pts.length; i++) if (segDist(px, py, pts[i], pts[Math.min(pts.length - 1, i + 1)]) < 44) return false;
+      return o.polygon ? segDist(px, py, pts[pts.length - 1], pts[0]) >= 44 : true;
+    }
+    const w = o.width || 0, h = o.height || 0;
+    const nx = Math.max(o.x, Math.min(px, o.x + w)), ny = Math.max(o.y, Math.min(py, o.y + h));
+    return Math.hypot(px - nx, py - ny) >= 60;
+  });
+  for (let ty = 2; ty < H - 2; ty++) for (let tx = 2; tx < W - 2; tx++) {
+    const t = grid[ty][tx];
+    if (t !== 'g' && t !== '.') continue;
+    const paved = t === '.', reach = paved ? 2 : 1, gap = paved ? 5 : 2.6;
+    const hv = (Math.imul(tx + 3, 7349) ^ Math.imul(ty + 5, 3571)) >>> 0;
+    if (hv % (paved ? 2 : 3) !== 0) continue;
+    let ok = true;
+    for (let j = -reach; j <= reach && ok; j++) for (let i = -reach; i <= reach; i++) if (!open(tx + i, ty + j) || (paved && grid[ty + j][tx + i] !== '.')) { ok = false; break; }
+    const c = centre(tx, ty);
+    if (!ok || TREES.some((q) => Math.hypot(q.x - c.x, q.y - c.y) < gap * TILE) || !clearOf(c.x, c.y)) continue;
+    TREES.push({ x: c.x, y: c.y, paved });
+  }
+  for (const q of TREES) FURN.add(Math.floor(q.y / TILE) * W + Math.floor(q.x / TILE));
 }
 
 // ---------- Canvas ----------
@@ -233,6 +273,15 @@ function renderMap() {
     }
   }
   for (const sh of SHADOWS) { m.fillStyle = sh.g; m.fillRect(...sh.rect); }
+  // Trees: a stone bed (in a square) or bare earth (in a garden), and a soft shadow under the crown.
+  for (const q of TREES) {
+    const sh = m.createRadialGradient(q.x, q.y, 6, q.x, q.y, 34);
+    sh.addColorStop(0, 'rgba(0,0,0,.5)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+    m.fillStyle = sh; m.fillRect(q.x - 34, q.y - 34, 68, 68);
+    m.fillStyle = q.paved ? '#4a4852' : '#2a2018'; m.beginPath(); m.arc(q.x, q.y, 15, 0, Math.PI * 2); m.fill();
+    m.fillStyle = '#241a12'; m.beginPath(); m.arc(q.x, q.y, 11, 0, Math.PI * 2); m.fill();
+    m.fillStyle = '#3a2a20'; m.beginPath(); m.arc(q.x, q.y, 5, 0, Math.PI * 2); m.fill();
+  }
   // Hedges drawn as round bushes on top of the garden.
   for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
     if (grid[ty][tx] !== 'h') continue;
@@ -307,7 +356,7 @@ window.addEventListener('keydown', (e) => {
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(k)) e.preventDefault();
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
-  if ((k === 'p' || (k === 'escape' && state.mode === 'field')) && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
+  if (!e.repeat && (k === 'p' || (k === 'escape' && state.mode === 'field')) && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
@@ -342,7 +391,7 @@ function pollGamepad() {
   if (pressed.has('p') && now.has('p') && (state.mode === 'field' || state.mode === 'battle') && state.running && !state.over) togglePause();
 }
 window.addEventListener('gamepadconnected', () => toast('Controller connected', 1500));
-window.addEventListener('blur', () => { keys.clear(); if (state.running && !state.over && !state.paused) togglePause(); });
+window.addEventListener('blur', () => { resetTraversal(); if (state.running && !state.over && !state.paused) togglePause(); });
 canvas.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.has = true; });
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 2) pressed.add('mouse-card');
@@ -492,12 +541,27 @@ function noise(x, y, radius) {
 // ---------- Player ----------
 // The 3D view (render3d.js) takes over drawing the field once WebGL is up, unless Options says Classic.
 const use3D = () => SETTINGS.view === '3d' && !!window.R3D && window.R3D.ready;
+function resetTraversal() {
+  // Preserve padHeld so a held Start button cannot retrigger pause on every poll.
+  keys.clear(); pressed.clear(); stickRelease();
+  document.querySelectorAll('.is-held').forEach((el) => el.classList.remove('is-held'));
+  if (state.player) { state.player.vx = state.player.vy = 0; state.player.moving = false; }
+  if (window.R3D) R3D.cancelOrbit();
+}
 const TURN_RATE = 3;   // radians a second, turning in the 3D view
 function updatePlayer(dt) {
   const p = state.player;
   let mx = 0, my = 0;
   const wheel = stick.on && Math.hypot(stick.x, stick.y) > 0.15;
-  if (use3D()) {
+  const cameraMove = use3D() && ['w', 'a', 's', 'd'].some((key) => keys.has(key));
+  if (cameraMove) {
+    const forward = Number(keys.has('w')) - Number(keys.has('s'));
+    const right = Number(keys.has('d')) - Number(keys.has('a'));
+    const yaw = R3D.heading();
+    mx = Math.cos(yaw) * forward - Math.sin(yaw) * right;
+    my = Math.sin(yaw) * forward + Math.cos(yaw) * right;
+    if (mx || my) p.dir += angDiff(p.dir, Math.atan2(my, mx)) * Traversal.damp(16, dt);
+  } else if (use3D()) {
     // Third person: Left/Right turn ZAY, Up walks forward, Down steps back.
     // The wheel works the same way: push up to walk, sideways to turn, both to walk round a corner.
     const turn = wheel ? Math.sign(stick.x) * Math.max(0, Math.abs(stick.x) - 0.15) / 0.85
@@ -510,10 +574,10 @@ function updatePlayer(dt) {
   } else if (wheel) {
     mx = stick.x; my = stick.y;
   } else {
-    if (keys.has('arrowup')) my -= 1;
-    if (keys.has('arrowdown')) my += 1;
-    if (keys.has('arrowleft')) mx -= 1;
-    if (keys.has('arrowright')) mx += 1;
+    if (keys.has('arrowup') || keys.has('w')) my -= 1;
+    if (keys.has('arrowdown') || keys.has('s')) my += 1;
+    if (keys.has('arrowleft') || keys.has('a')) mx -= 1;
+    if (keys.has('arrowright') || keys.has('d')) mx += 1;
   }
   const mag = Math.hypot(mx, my);
   p.moving = mag > 0.15;
@@ -534,16 +598,31 @@ function updatePlayer(dt) {
     p.dashT = 0.17; p.dashCd = 0.8; p.invuln = Math.max(p.invuln, 0.2);
     play('cloth2', { vol: 0.7 }); play('swish');
   }
+  const oldX = p.x, oldY = p.y;
   if (p.dashT > 0) {
-    p.dashT -= dt;
-    move(p, Math.cos(p.dir) * 520 * dt, Math.sin(p.dir) * 520 * dt);
-  } else if (p.moving) {
-    move(p, mx * speed * dt, my * speed * dt);
-    p.step += dt * (p.sprint ? 14 : 9);
-    p.stepT = (p.stepT || 0) - dt;
+    const dashDt = Math.min(dt, p.dashT);
+    p.dashT = Math.max(0, p.dashT - dt);
+    p.vx = p.vy = 0;
+    move(p, Math.cos(p.dir) * 520 * dashDt, Math.sin(p.dir) * 520 * dashDt);
+  } else {
+    // Reach walk speed in ~0.12 s and brake in ~0.07 s. Classic retains direct movement.
+    const v = use3D() ? Traversal.velocity(p.vx || 0, p.vy || 0,
+      p.moving ? mx * speed : 0, p.moving ? my * speed : 0, p.moving ? 1000 : 1800, dt)
+      : { x: mx * speed, y: my * speed };
+    p.vx = v.x; p.vy = v.y;
+    move(p, v.x * dt, v.y * dt);
+    // Don't store momentum along a blocked axis: releasing at a wall must stop cleanly.
+    if (Math.abs(p.x - oldX) < 0.001) p.vx = 0;
+    if (Math.abs(p.y - oldY) < 0.001) p.vy = 0;
+  }
+  const travelled = Math.hypot(p.x - oldX, p.y - oldY);
+  p.moving = travelled > 0.01;
+  if (p.moving && p.dashT <= 0) {
+    p.step += travelled / 13;
+    p.stepT = (p.stepT || 0) - travelled;
     if (p.stepT <= 0) {
       if (inHedge) play('rustle'); else playStep(p.sprint);
-      p.stepT = p.sprint ? 0.27 : 0.4;
+      p.stepT = p.sprint ? 50 : 47;
     }
   }
 
@@ -559,7 +638,10 @@ function updatePlayer(dt) {
 
   // Actions
   if (pressed.has('i') || pressed.has('tab')) { openInventory(); return; }
-  if (pressed.has('e') || pressed.has('touch-use')) use();
+  if (pressed.has('e') || pressed.has('touch-use')) {
+    use();
+    if (state.mode !== 'field') return;
+  }
   if (pressed.has('q') || pressed.has('mouse-card') || pressed.has('touch-card')) throwCard(pressed.has('mouse-card') || (pressed.has('q') && mouse.has));
 
   // Pickups
@@ -570,11 +652,6 @@ function updatePlayer(dt) {
     if (!c.taken && dist(c, p) < 20) { c.taken = true; p.cards += c.count; play('belt', { vol: 0.8 }); play('card', { delay: 0.05 }); toast(`+${c.count} cards`); }
   }
 
-  // Boat
-  if (Math.hypot(p.x - BOAT.x, p.y - BOAT.y) < 70) {
-    if (p.hasLedger && !state.leaving) { state.leaving = true; endingScene().then(() => finish(true)); }
-    else if (!state.ledgerTaken && !updatePlayer.boatHint) { toast("Not leaving without Veyrane's ledger."); updatePlayer.boatHint = true; }
-  } else updatePlayer.boatHint = false;
   checkExits(p);
 }
 
@@ -585,6 +662,11 @@ function behind(g, p) {
 
 function use() {
   const p = state.player;
+  const questTarget = ledgerQuestTarget(p);
+  if (questTarget === LEDGER_SPOT) { ledgerScene(); return; }
+  if (questTarget === LEDGER_SCOUT) { scoutCountingHouse(); return; }
+  if (questTarget === BOAT) { ledgerBoatScene(); return; }
+
   // 1. Silent takedown
   let best = null;
   for (const g of state.guards) {
@@ -603,23 +685,12 @@ function use() {
   // 2. Tail vault over the estate wall
   for (const v of VAULTS) {
     if (dist(v.wall, p) < 46) {
-      const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
-      p.x = dest.x; p.y = dest.y;
-      effect('vault', v.wall.x, v.wall.y);
-      play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
-      toast('Tail on the ledge, over the wall.');
+      if (state.district === 'crown-estate' && !state.ledgerTaken) chooseLedgerVault(v);
+      else vaultWall(v);
       return;
     }
   }
-  // 3. The ledger
-  if (!state.ledgerTaken && dist(LEDGER_SPOT, p) < 40) {
-    state.ledgerTaken = true;
-    p.hasLedger = true;
-    play('book'); play('jComplete', { vol: 0.7, delay: 0.25 });
-    ledgerScene();
-    return;
-  }
-  // 4. Chests
+  // 3. Chests
   for (const c of state.chests) {
     if (!c.opened && dist(c, p) < 40) {
       c.opened = true;
@@ -632,18 +703,29 @@ function use() {
       return;
     }
   }
-  // 5. The Soot kid (by the street stage in the Lantern Quarter)
+  // 4. The Soot kid (by the street stage in the Lantern Quarter)
   if (dist(KID, p) < 44) {
     talkToKid();
     return;
   }
-  // 6. The Blackwater fence
+  // 5. The Blackwater fence
   if (FENCE.x && dist(FENCE, p) < 44) { talkToFence(); return; }
-  // 7. People
+  // 6. People
   const n = npcNear(p);
   if (n) { talkTo(n); return; }
-  // 8. Nothing nearby
+  // 7. Nothing nearby
   if (tileAt(p.x, p.y) !== 'h') toast('Nothing to use here.', 1100);
+}
+
+function vaultWall(v) {
+  const p = state.player;
+  const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
+  p.x = dest.x; p.y = dest.y;
+  p.vx = p.vy = 0;
+  if (window.R3D) R3D.resetCamera();
+  effect('vault', v.wall.x, v.wall.y);
+  play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
+  toast('Tail on the ledge, over the wall.');
 }
 
 // A crime in front of the city watch: any watchman who can see ZAY or the spot turns hostile.
@@ -664,6 +746,7 @@ function witnessCrime(x, y, victim = null, radius = 230, watchOnly = false) {
 }
 
 function knockOut(g, silent) {
+  if (silent && window.R3D) R3D.playHero('attack');
   g.state = 'down';
   g.meter = 0;
   state.kos += 1;
@@ -679,9 +762,23 @@ function throwCard(aimAtMouse) {
   const p = state.player;
   if (p.cards <= 0) { toast('Out of cards.', 1000); return; }
   p.cards -= 1;
+  if (window.R3D) R3D.playHero('throw');
   const a = aimAtMouse && !use3D() ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : p.dir;
   state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(a) * 430, vy: Math.sin(a) * 430, life: 0.62, spin: 0 });
   play('card');
+}
+
+function throwQuestLure(landing) {
+  if (state.player.cards <= 0) return;
+  state.player.cards -= 1;
+  play('card');
+  landCardLure(landing.x, landing.y);
+}
+
+function landCardLure(x, y) {
+  noise(x, y, 175);
+  effect('card', x, y);
+  play('uiTick', { vol: 0.9 }); play('card', { delay: 0.02 });
 }
 
 function updateProjectiles(dt) {
@@ -700,9 +797,7 @@ function updateProjectiles(dt) {
     }
     if (!c.done && (solidTile(tileAt(c.x, c.y)) || c.life <= 0)) {
       c.done = true;
-      noise(c.x, c.y, 175);
-      effect('card', c.x, c.y);
-      play('uiTick', { vol: 0.9 }); play('card', { delay: 0.02 });
+      landCardLure(c.x, c.y);
     }
   }
   state.projectiles = state.projectiles.filter((c) => !c.done);
@@ -1004,6 +1099,7 @@ function render() {
   drawWater();
   drawFurniture();
   drawProps();
+  // Tree crowns, seen from above (see plantTrees).
   for (const g of state.guards) if (inView(g.x, g.y)) drawCone(g);
   for (const g of state.guards) if (inView(g.x, g.y)) drawGuard(g);
   drawNpcs();
@@ -1485,6 +1581,7 @@ async function start(fromSave = false) {
   updateBagBadge();
 }
 function togglePause() {
+  resetTraversal();
   state.paused = !state.paused;
   suspendMusic(state.paused);
   document.getElementById('pause').hidden = !state.paused;
@@ -1529,16 +1626,20 @@ function frame(now) {
     else if (state.mode === 'loading') { /* a district is loading */ }
     else {
       updatePlayer(dt);
-      updateProjectiles(dt);
-      for (const g of state.guards) updateGuard(g, dt);
-      updateWalkers(dt);
-      updateBarks(dt);
-      checkOverhear();
-      for (const e of state.effects) e.t += dt;
-      state.effects = state.effects.filter((e) => e.t < 0.7);
-      updateHud();
+      if (state.mode === 'field') {
+        updateProjectiles(dt);
+        for (const g of state.guards) updateGuard(g, dt);
+        updateWalkers(dt);
+        updateBarks(dt);
+        checkOverhear();
+        for (const e of state.effects) e.t += dt;
+        state.effects = state.effects.filter((e) => e.t < 0.7);
+        updateHud();
+      }
     }
   }
+  if (state.paused || state.mode !== 'field') { state.player.vx = state.player.vy = 0; }
+  drawMinimap();
   pressed.clear();
   const field3d = !!LEVEL && state.mode !== 'battle' && use3D();
   show3D(field3d);

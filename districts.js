@@ -54,6 +54,8 @@ function resetDistrict() {
   state.ledgerTaken = state.jobsDone.has('veyrane-ledger');
   state.leaving = false;
   state.player.hasLedger = false;
+  state.player.vx = state.player.vy = 0;
+  state.player.dashT = 0;
   state.npcs = presentNpcs();
   state.walkers = makeWalkers();
   BARKS.length = 0;
@@ -89,7 +91,7 @@ async function enterDistrict(id, spawn = 'start', { save = true } = {}) {
   hudCache = '';
   state.mode = 'field';
   fadeEl.classList.remove('is-on');
-  toast(DISTRICTS[id].name, 2000);
+  { const [title, sub = ''] = DISTRICTS[id].name.split(' · '); showBanner(title, sub || 'Bellemorne'); }
   if (save) writeSave();
   return true;
 }
@@ -123,7 +125,7 @@ function objectiveInfo() {
   if (state.district === 'crown-estate') {
     if (done && !state.player.hasLedger) return { text: 'Nothing left here tonight. Head back to the Lantern Quarter.', goal: exitTo('lantern') };
     if (!state.ledgerTaken) return { text: "Steal the ledger from House Veyrane's counting house", goal: LEDGER_SPOT };
-    return { text: 'Reach the river boat', goal: BOAT };
+    return { text: 'Use the river boat to escape with the ledger', goal: BOAT };
   }
   const taken = state.jobsTaken.has('veyrane-ledger');
   const reported = state.deeds.reportedLedger;

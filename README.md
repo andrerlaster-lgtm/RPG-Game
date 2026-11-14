@@ -8,22 +8,25 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 
 ## How to play
 
-- **Goal:** take the ledger from the Veyrane counting house, then reach the river boat at the east docks. Optional: give the coin you pick up (or steal) to the Soot kid by the street stage in the Lantern Quarter.
+- **Goal:** take the ledger from the Veyrane counting house, then use the river boat at the east docks to escape. Optional: give the coin you pick up (or steal) to the Soot kid by the street stage in the Lantern Quarter.
 - **Stealth:** lantern light makes you easy to see; shadows halve how far guards can see you; garden hedges hide you. A ring over each guard fills while they can see you; when it's full they raise the alarm and nearby guards come running.
 - **No casualties:** every takedown and every battle win is a knockout.
 
 | Action | Keyboard / mouse | Touch | Controller |
 |---|---|---|---|
-| Move (3D view) | ↑ walk forward, ↓ step back, ← → turn | Wheel: push up to walk, sideways to turn, down to step back (push further to go faster) | D-pad or left stick, same as keys |
-| Move (Classic view) | Arrow keys | Wheel: ZAY walks the way you push | D-pad or left stick |
+| Move (3D view) | WASD relative to camera; arrows retain forward/back/turn | Wheel: push up to walk, sideways to turn, down to step back (push further to go faster) | D-pad or left stick, same as keys |
+| Move (Classic view) | Arrow keys or WASD | Wheel: ZAY walks the way you push | D-pad or left stick |
+| Look around (3D) | Left-drag view; wheel or +/− zoom; C recenter | Drag the open view | — |
 | Sprint (noisy) | Shift | Hold Sprint | Hold LB or RB |
-| Takedown from behind, tail-vault the estate wall, grab the ledger, give coin | E | Use | A |
+| Interact, talk, pick a quest action, or take down a guard from behind | E | Use | A |
 | Throw a card (noise lure; stuns on a direct hit) | Q or right-click (3D: straight ahead; Classic: aims at the cursor) | Card (throws where you face) | X |
 | Roll | Space | Roll | B |
 | Bag (inventory) | I or Tab | Bag button (top) | Y |
 | Pause | Esc or P | II button | Start |
 
 In battles a controller uses the d-pad to choose, **A** to confirm and **B** to go back.
+
+When a quest prompt appears, press **E** / **Use** / **A**. Pick an option with the arrow keys and Enter, the d-pad and **A**, or by tapping it.
 
 ## Battles (Final Fantasy style)
 
@@ -53,6 +56,9 @@ Your end rating depends on how often you were spotted and how many guards you kn
 ## Options and HUD
 
 - **Options** (title screen or pause menu): sound volume, guard vision cones on/off, screen shake on/off, **View** (3D or Classic) and battle speed (Slow / Normal / Fast). Settings are saved in this browser on this device.
+- **Minimap** (top right in the field): the streets around ZAY, the ways out (gold squares), the objective (a gold ring, pinned to the edge when it's off the map), and only the guards ZAY could see for himself or who are already chasing him. In 3D it turns with the camera; the N shows north. Code: `minimap.js`.
+- **District name card:** arriving in a district shows its name in large letters for a few seconds (it replaced the small toast).
+- **Graphics quality** has **Auto** (the default for new players): High until the device shows it can't keep up (about 4 seconds under ~25 frames a second), then Low for the rest of the session. A choice already saved on a device (Low or High) is kept.
 - **Restart level** asks for confirmation first.
 - **Bag badge:** a red number on the Bag button counts new items; tabs with new items get a dot, and new items show a "New" tag until you select them.
 - **Tooltips:** hover (or focus, or long-press on a phone) the HP, gold, cards, visibility, Bag and Pause items in the HUD.
@@ -111,9 +117,10 @@ After you've told Noe the ledger job is done, she has a second one. Veyrane sent
 The first story loop of the open city:
 
 1. A new game starts outside **the Crooked Halo**. Walk in through its door (south side of the main street).
-2. **Noe** is behind the bar. She tells you about Veyrane's new penalties and the ledger; agree and the job is yours ("No casualties. And you come back.").
-3. Walk east to the Crown Quarter, take the ledger and reach the boat as before.
-4. You're sent back outside the Halo. Tell Noe it's done (+10 Name).
+2. **Noe** is behind the bar. Ask what the ledger will buy her, agree to bring it back, or take more time. The same five gold you could give the Soot kid will buy passage upriver if you have it.
+3. Walk east to the Crown Quarter or take the smuggler's boat. At the old wall you can choose whether to tail-vault it. At the hedge south of the counting house, scout the patrol or spend a card to draw it away from the door.
+4. At the ledger, take it quickly or inspect the silver seal. Lingering can alert a nearby guard, and what you learn changes ZAY's report to Noe. At the east docks, lose any active pursuit and choose to push off. You can spend a card to draw a patrol away first.
+5. You're sent back outside the Halo. Give Noe the ledger (+10 Name). The collector's satchel job opens after you report back.
 
 - **Severin** is sometimes at a corner table (always on the night you finish the ledger job). It's neutral ground: he doesn't fight and doesn't threaten. He sits, he watches, and he lets ZAY feel how far his reach goes.
 - The regulars have a line each; the musician on the stage keeps playing.
@@ -157,7 +164,7 @@ Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lanter
   - `lamp` — a street lamp (optional `radius`, default 128)
   - `chest` — property `item` (any item name from `characters.js`)
   - `coin` — property `gold`; `cards` — property `count`
-  - `ledger`, `kid`, `boat` — the objective, the Soot kid, the escape boat
+  - `ledger`, `ledger-scout`, `kid`, `boat` — the objective, the patrol overlook, the Soot kid, the escape boat
   - `vault` — draw a 2-point line across a 1-tile wall where ZAY can tail-vault
   - `exit` — a rectangle; walking into it loads another district. Properties `to` (district id from `districts.js`) and `spawn` (spawn name there)
   - `spawn` — a named arrival point (the object's name); `start` is also a spawn
@@ -170,15 +177,20 @@ Each district is a [Tiled](https://www.mapeditor.org/) map in `levels/` (`lanter
 
 The field is drawn in 3D by default, with a chase camera behind ZAY (`render3d.js`, using [Three.js](https://threejs.org) r169, MIT, copied into `vendor/three/`). Battles are still the 2D Final Fantasy-style screen.
 
-- **Only the picture changed.** Maps, collision, stealth, guard vision, saves and every job are the same code as the Classic view. Options → View switches between them at any time.
-- **Controls:** turn with ← →, walk with ↑, step back with ↓. Cards fly straight ahead.
-- **Camera:** sits behind and above ZAY and swings round as he turns. In tight streets it comes in closer and looks down over the rooftops instead of going through a wall. On phones the view is shifted up so ZAY stands above the thumb controls.
-- **What's drawn:** the same painted ground as Classic; buildings with timber-framed plaster or brick walls (cut stone on the Veyrane estate), pitched slate, copper or clay roofs on anything at least two tiles deep, and lit or shuttered windows; hedges, furniture and market stalls, lamp posts (the six nearest give real light), the boat, exits as a soft gold glow, place names, vision cones on the ground, awareness rings and "!" over guards, the E / Use / Lift prompt, speech bubbles, and the gold objective arrow.
+- **Shared game systems.** Maps, collision, stealth, guard vision, saves and every job use the same code as the Classic view. The 3D controls add smoothing on top of those rules. Options → View switches between them at any time.
+- **Controls:** WASD moves relative to the camera with smooth facing, acceleration and quick braking. Arrow keys, the touch wheel and controller retain forward/back/turn. Left-drag the open view to orbit (also on touch); wheel or +/− zoom; C recenters. Cards still fly where ZAY faces. Footsteps and sprint noise follow actual movement, so pushing into a wall stays quiet.
+- **Camera:** follows behind and above ZAY, with a stable heading during WASD movement. It sweeps a camera-sized volume against buildings, roof heights, furniture and projecting balconies, pulls in immediately, and eases back out. The smoothed camera path is checked too, preventing corner cutting. Very close cameras hide ZAY briefly to keep the view clear. On phones the view is shifted up so ZAY stands above the thumb controls.
+- **What's drawn:** the same map as Classic, with wet cobbles, varied plaster/brick buildings (cut stone on the Veyrane estate), pitched roofs, pale cornices, framed windows, louvered shutters, scrollwork balconies, flower boxes and layered planting. Existing market/street furniture, boat, exits, labels, awareness markers and interaction prompts remain.
 - **Market stalls, stools and kegs are real models:** CC0 models by Polygonal Mind (`models/props.glb`, 644 KB, loaded by `vendor/three/addons/GLTFLoader.js`). Food and mask stalls use the market booths, facing the open street and fitted to the stall's tiles. Tables get stools, and the Crooked Halo bar gets kegs. If the file can't load, the simple boxes are used instead.
-- **Characters are placeholders for now:** simple figures built from shapes in the model-sheet colours (ZAY's coat, locs, katana and tail; Noe, Severin, guards, watch, marks and locals). The next step is real rigged CC0 character models (for example Quaternius or Kenney packs); those sites are blocked from the build environment. The plan now is to make them with MPFB2 in Blender: see `docs/characters-with-mpfb2.md`.
+- **ZAY's playable 3D mock:** a custom MPFB-based CC0 skinned prototype with locs, pointed ears, a coat and animated tail, using idle/walk/run, dodge, throw and takedown clips. His name, story, portraits and abilities remain intact. NPCs keep their procedural figures, and failed downloads use the procedural ZAY fallback. The earlier KayKit rogue is retained as an alternative asset. Model configuration and animation mappings live in `hero3d.js`; see `docs/graphics/zay-3d-mock.md` for the prototype's limits and `docs/graphics/major-overhaul.md` for the replacement workflow.
+- **Lighting and quality:** Options → Scene lighting selects Night, Dusk or Day, with generated skies, environment lighting, fog and wet-surface response. These are visual previews; stealth still uses the existing night rules. Low quality reduces resolution, local lights, distant decorations and mist, and disables directional shadows. Settings persist on this device.
 - **Night look (phase 1):** warm lantern light against cool shadows, real cobbles with relief, lantern halos and light pools, glowing framed windows, soft lantern-aware shadows and low mist, drawn by `light3d.js` with no extra image files. See `docs/graphics/night-lighting-phase1.md` for the before/after pictures, the tone-mapping comparison and the performance numbers.
+- **Polish pass:** iron galleries on street-facing windows, garden plants, static moon shadows and animated river highlights above the painted ground. Static character parts are batched; district rebuilds dispose their GPU resources. See `docs/graphics/third-person-polish.md` for provenance, validation and remaining work.
+- **Street life** (`streetlife3d.js`): a door with a stone step on each house's street side (on a wall without windows, so the shutters and galleries stay), door lanterns, painted shop signs on iron brackets (not on the estate), chimneys with drifting smoke, strings of paper lanterns across the Lantern Quarter's streets (fewer in the River Quarter), plank docks on posts, and trees. Rooms like the Crooked Halo no longer show street windows on their inside walls.
+- **Trees are solid.** `plantTrees` in `game.js` plants them by rule rather than in Tiled: on open garden ground and in the middle of wide squares, never within about two tiles of any Tiled object or patrol/walking route. A tree blocks its tile in both views (it joins `FURN`, like furniture), so guards path round it. Classic draws it as a crown seen from above.
+- **Glow** (`post3d.js`, High only): bloom round lanterns and windows, a cool-shadow / warm-highlight grade, a vignette, and a faint red edge while guards are chasing. Low draws straight to the screen.
 - **No WebGL:** if the device can't run 3D, the game stays in Classic and Options says so.
-- Tune it in `render3d.js`: `WALL_H` (building height), `CAM_BACK` / `CAM_UP` (camera distance and height), and `TURN_RATE` in `game.js`.
+- Tune it in `render3d.js`: `WALL_H` (building height), `zoomBack` / `pitch` (camera distance and angle), and `TURN_RATE` in `game.js`.
 
 ## 2.5D look (Classic view)
 
@@ -229,25 +241,43 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `reputation.js` — the Name score, its tiers and the fence price rule
 - `characters.js` — classes, party, spells, item database, equipment, levels, enemies
 - `game.js` — map, lighting, guards, stealth, the Classic renderer, and the switch into battles
+- `traversal.js` — tested velocity and camera-clearance math
 - `render3d.js` — the third-person 3D view (Three.js)
+- `streetlife3d.js` — doors, signs, chimney smoke, lantern strings, docks and trees in 3D
+- `post3d.js` — the High-quality finishing pass (bloom, colour grade, vignette)
+- `minimap.js` — the minimap and the district name card
 - `light3d.js` — the 3D night look: generated cobble, glow, shadow and mist textures
-- `vendor/three/` — Three.js r169 (MIT), plus its GLTF loader in `addons/`
+- `world-art3d.js` — generated plaster/wetness, sky/environment lighting, instanced facade and foliage detail
+- `hero-config.js` — replaceable ZAY model path, orientation and semantic animation mappings
+- `hero3d.js` — reusable ZAY loading, normalization and animation controller
+- `models/zay/` — current Shadow rogue, previous prototypes, and their separate license notices
+- `vendor/three/` — Three.js r169 (MIT), plus its GLTF loader and post-processing add-ons in `addons/`
 - `models/props.glb` — CC0 market stalls, stools and kegs (Polygonal Mind)
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)
 - `inventory.js` — the bag screen, item icons, equipping and field item use
 
-## Preview
+## Validation
 
-Stable preview link (needs your Vercel login): https://bellemorne-rogue-game-preview-andrerlaster-lgtms-projects.vercel.app
+`npm test` runs the movement/camera math regressions. `npm run check` checks JavaScript syntax and all Tiled map structures. There is still no build step and no runtime package installation.
 
-To update it, run `npm run deploy`, then point the stable link at the new deployment:
+`npm run test:smoke` (`tests/smoke.cjs`) is a second real-browser check that drives the game loop in fixed steps, so it also passes on slow machines and software graphics: movement, collision from 16 directions, camera drag/zoom/clearance, all four districts (exits reachable, trees solid, patrols moving), takedown, cards, coins, bag, pause, save, talking to Noe, a battle, Classic, Low/High/Auto graphics and GPU resource counts across district changes. It needs Playwright: `npm i -g playwright`, then `NODE_PATH=$(npm root -g) npm run test:smoke`.
+
+For the optional real-browser suite, make `playwright-core` available separately and run:
 
 ```bash
-vercel alias set <new-deployment-url> bellemorne-rogue-game-preview-andrerlaster-lgtms-projects.vercel.app --scope andrerlaster-lgtms-projects
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright-core CHROME_PATH=/absolute/path/to/chrome npm run test:browser
 ```
 
-The project's very first deploy (2026-10-03) went to production by Vercel's default for new projects. Its public aliases (`bellemorne-rogue-game.vercel.app` and the team alias) were removed right away, so only the login-protected preview is in use.
+The suite starts its own localhost server and writes screenshots/results under `work/playtest/` (override with `TEST_ARTIFACTS`). It uses keyboard/pointer controls plus deterministic scene fixtures; it is not a complete campaign playthrough. Physical controllers and real mobile GPUs remain unverified.
+
+`vercel.json` disables automatic Git deployments for `feat/third-person-polish` and `feat/major-graphics-overhaul`, so review can happen before deployment approval. It does not alter login protection or the production branch.
 
 ## Deploying
 
-Pushing to `main` on `andrerlaster-lgtm/RPG-Game` deploys this game to the `bellemorne-rogue-game` Vercel project. The project is login-protected for every deployment (Vercel Authentication: all), so the game is not public. Check the result in the LasterLab studio under Deploy Check.
+The owner merges the reviewed branch. Pushing to `main` on `andrerlaster-lgtm/RPG-Game` deploys this game to the `bellemorne-rogue-game` Vercel project. Keep every deployment login-protected. Follow `AGENTS.md`: do not run manual deploy/promote/alias commands, publish preview links, or change project protection settings. Check the result in the private LasterLab studio under Deploy Check after a merge.
+
+## ZAY character review
+
+The current development branch replaces the plain MPFB prototype with a detailed, rigged third-party Shadow rogue: layered leather/cloth gear, sculpted face, hood/hair, straps, buckles and reinforced boots. Its supplied PBR textures are repaired and optimized, locomotion/actions blend through the reusable controller, and high quality adds a small moving shadow. The source is AI-assisted and uses a custom game-use license, not CC0.
+
+See `docs/graphics/zay-shadow-rogue.md` for provenance, license terms, reproduction, replacement instructions and remaining limitations. Serve the repository locally and open `tools/zay-review.html` for the real mesh's before/after comparison and animation review. The previous MPFB and KayKit assets remain available. ZAY's established identity and gameplay are unchanged. Automatic deployment is disabled for `feat/zay-authored-character`; the owner reviews and merges.
