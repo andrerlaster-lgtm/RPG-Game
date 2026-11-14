@@ -11,6 +11,7 @@
 
 import * as THREE from './vendor/three/three.module.min.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
+import { makeFigures } from './figure3d.js';
 import { makeCobbles, makeTint, withTint, makeGlow, makeWindow, makeBlob, makeMist } from './light3d.js';
 
 const S = 1 / TILE;
@@ -476,7 +477,7 @@ if (renderer) {
     }
 
     scene.add(world);
-    for (const [obj, g] of figures) { scene.remove(g); figures.delete(obj); }
+    for (const [obj, g] of figures) { drop(g); figures.delete(obj); }
     // Cones and marks belong to the last visit's guards.
     for (const c of allCones) { scene.remove(c); c.geometry.dispose(); }
     for (const m of allMarks) { scene.remove(m); m.material.map.dispose(); }
@@ -626,107 +627,21 @@ if (renderer) {
     return wrap;
   }
 
-  // ---------- Figures (placeholders until CC0 models are added) ----------
-  // Built from capsules and spheres in each character's colours. part names: legs, body, head, hair.
-  const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 4, 10);
-  function figure({ coat, low, trim, skin, hair, hairStyle, sash, scale = 1, eyes = 0xf1ead9 }) {
-    const g = new THREE.Group();
-    const inner = new THREE.Group();
-    inner.scale.setScalar(scale);
-    g.add(inner);
-    const legL = mesh(capsule(0.075, 0.28), lambert(low), 0, 0.2, -0.09);
-    const legR = mesh(capsule(0.075, 0.28), lambert(low), 0, 0.2, 0.09);
-    const body = mesh(capsule(0.17, 0.3), lambert(coat), 0, 0.58, 0);
-    body.scale.set(0.85, 1, 1.1);
-    const trimM = mesh(new THREE.BoxGeometry(0.03, 0.34, 0.08), lambert(trim), 0.15, 0.6, 0);
-    const head = mesh(new THREE.SphereGeometry(0.13, 14, 10), lambert(skin), 0.02, 0.93, 0);
-    inner.add(legL, legR, body, trimM, head);
-    if (sash) inner.add(mesh(new THREE.BoxGeometry(0.3, 0.06, 0.36), lambert(sash), 0, 0.46, 0));
-    // Eyes
-    for (const z of [-0.045, 0.045]) inner.add(mesh(new THREE.SphereGeometry(0.018, 6, 4), glowMat(eyes), 0.135, 0.95, z));
-    // Hair
-    const hm = lambert(hair);
-    if (hairStyle === 'hat') {
-      inner.add(mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.025, 16), lambert(0x16141c), 0.02, 1.02, 0));
-      inner.add(mesh(new THREE.CylinderGeometry(0.12, 0.13, 0.14, 14), lambert(0x16141c), 0.02, 1.09, 0));
-      inner.add(mesh(new THREE.CylinderGeometry(0.131, 0.131, 0.03, 14), lambert(trim), 0.02, 1.04, 0));
-    } else if (hairStyle === 'curls') {
-      for (const [x, y, z] of [[-0.05, 1.0, 0], [-0.09, 0.93, 0.09], [-0.09, 0.93, -0.09], [0, 1.03, 0.07], [0, 1.03, -0.07], [-0.12, 0.86, 0]]) inner.add(mesh(new THREE.SphereGeometry(0.075, 8, 6), hm, x, y, z));
-    } else if (hairStyle === 'wrap') {
-      const w = mesh(new THREE.SphereGeometry(0.14, 12, 8, Math.PI / 2, Math.PI, 0, Math.PI * 0.55), lambert(trim), 0.01, 0.95, 0);
-      inner.add(w);
-    } else if (hairStyle === 'locs') {
-      const cap = mesh(new THREE.SphereGeometry(0.137, 12, 8, Math.PI / 2, Math.PI, 0, Math.PI * 0.6), hm, 0.01, 0.94, 0);
-      inner.add(cap);
-      for (const z of [-0.08, -0.03, 0.03, 0.08]) { const l = mesh(capsule(0.02, 0.22), hm, -0.12, 0.8, z); l.rotation.z = -0.35; inner.add(l); }
-    } else if (hairStyle === 'hood') {
-      inner.add(mesh(new THREE.SphereGeometry(0.155, 14, 10, Math.PI / 2, Math.PI * 1.25, 0, Math.PI * 0.7), lambert(0x1c1c26), 0.0, 0.95, 0));
-    } else {
-      inner.add(mesh(new THREE.SphereGeometry(0.137, 12, 8, Math.PI / 2, Math.PI, 0, Math.PI * 0.5), hm, 0.01, 0.95, 0));
-    }
-    // A soft shadow at the feet. place() stretches it away from the nearest lantern.
-    const sh = mesh(new THREE.PlaneGeometry(0.95, 0.95), SHADOW_MAT, 0, 0.014, 0);
-    sh.rotation.order = 'YXZ'; sh.rotation.x = -Math.PI / 2; sh.renderOrder = 2;
-    g.add(sh);
-    g.userData = { inner, legL, legR, body, head, shadow: sh };
-    return g;
-  }
-  function zayFigure(town) {
-    const g = figure(town
-      ? { coat: 0x2c2f36, low: 0x1c1d22, trim: 0xb39a72, skin: 0x5a3b2b, hair: 0x1a110c, hairStyle: 'locs', eyes: 0xf3c25c }
-      : { coat: 0x121218, low: 0x0b0b10, trim: 0x1c1c26, skin: 0x5a3b2b, hair: 0x1a110c, hairStyle: 'hood', eyes: 0xf3c25c });
-    const inner = g.userData.inner;
-    // Katana across his back, gold at the guard.
-    const blade = mesh(new THREE.BoxGeometry(0.03, 0.75, 0.025), lambert(0xc9c9d6), -0.17, 0.66, 0);
-    blade.rotation.x = 0.8;
-    blade.add(mesh(new THREE.BoxGeometry(0.06, 0.03, 0.07), lambert(0xe9b65a), 0, 0.2, 0));
-    inner.add(blade);
-    // His tail, swaying behind him.
-    const tail = new THREE.Group();
-    tail.position.set(-0.15, 0.45, 0);
-    const t1 = mesh(capsule(0.035, 0.3), lambert(0x2a1a14), -0.17, -0.08, 0);
-    t1.rotation.z = 1.1;
-    tail.add(t1);
-    inner.add(tail);
-    // The ledger, when he's carrying it.
-    const ledger = mesh(new THREE.BoxGeometry(0.16, 0.2, 0.05), lambert(0x7a1f22), -0.05, 0.62, 0.2);
-    inner.add(ledger);
-    g.userData.tail = tail;
-    g.userData.ledger = ledger;
-    g.userData.town = town;
-    return g;
-  }
+  // ---------- Figures (jointed characters; see figure3d.js) ----------
+  const FIG = makeFigures({ glowMat, shadowMat: SHADOW_MAT });
   const hex = (s) => new THREE.Color(s).getHex();
-  function npcFigure(n) {
-    const L = npcLook(n);
-    return figure({ coat: hex(L.coat), low: hex(L.low), trim: hex(L.trim), skin: hex(L.skin), hair: hex(L.hair), hairStyle: L.hairStyle, sash: L.sash && hex(L.sash),
-      eyes: n.who === 'severin' ? 0xdfe3ee : n.who === 'noe' ? 0xc99a52 : 0xf1ead9 });
-  }
-  function guardFigure(g) {
-    const def = ENEMIES[g.kind] || ENEMIES.guard;
-    const f = figure({ coat: hex(def.coat), low: g.watch ? 0x21140f : 0x141a2c, trim: hex(def.trim), skin: 0x5a3b2b, hair: 0x1b2238, hairStyle: 'short', scale: 1.08 });
-    const inner = f.userData.inner;
-    // Helmet and a hand lantern.
-    inner.add(mesh(new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), lambert(0x2a2f3e), 0.02, 0.97, 0));
-    inner.add(mesh(new THREE.SphereGeometry(0.05, 8, 6), glowMat(0xffd88a), 0.2, 0.42, 0.2));
-    f.userData.coatMat = f.userData.body.material;
-    return f;
-  }
-  function kidFigure() {
-    return figure({ coat: 0x4a4236, low: 0x24201a, trim: 0x8a7a5a, skin: 0x5a3424, hair: 0x160d09, hairStyle: 'short', scale: 0.7 });
-  }
-  function fenceFigure() {
-    const f = figure({ coat: 0x3a3428, low: 0x1c1912, trim: 0xc9a25a, skin: 0x6a4430, hair: 0x1a120d, hairStyle: 'hat' });
-    f.userData.inner.add(mesh(new THREE.SphereGeometry(0.06, 8, 6), glowMat(0xffc670), 0.25, 0.7, 0.25));
-    return f;
-  }
+  const zayFigure = (town) => FIG.zay(town);
+  const npcFigure = (n) => FIG.npc(npcLook(n), n.who);
+  const guardFigure = (g) => FIG.guard(ENEMIES[g.kind] || ENEMIES.guard, g.watch);
+  const kidFigure = () => FIG.kid();
+  const fenceFigure = () => FIG.fence();
 
   // Each game object gets its own figure the first time it shows up; figures whose object is gone are removed.
   const figures = new Map();
   let frameNo = 0;
   function figureFor(obj, make) {
     let g = figures.get(obj);
-    if (!g) { g = make(); figures.set(obj, g); scene.add(g); g.userData.lx = obj.x; g.userData.ly = obj.y; g.userData.walk = 0; }
+    if (!g) { g = make(); figures.set(obj, g); scene.add(g); }
     g.userData.seen = frameNo;
     g.visible = true;
     return g;
@@ -746,24 +661,17 @@ if (renderer) {
     const ph = g.rotation.y, lx = (vx * Math.cos(ph) - vz * Math.sin(ph)) / m, lz = (vx * Math.sin(ph) + vz * Math.cos(ph)) / m;
     sh.rotation.y = Math.atan2(-lz, lx);
     sh.scale.set(1 + 0.9 * m, 1 - 0.1 * m, 1);
-    sh.position.set(lx * 0.12 * m, 0.014, lz * 0.12 * m);
+    sh.position.set(lx * 0.12 * m, 0.014 - g.position.y, lz * 0.12 * m);
   }
-  function place(g, x, y, dir, dt, { lying = false } = {}) {
-    const u = g.userData;
-    const moved = Math.hypot(x - u.lx, y - u.ly);
-    u.lx = x; u.ly = y;
-    const speed = dt > 0 ? moved / dt : 0;
-    u.walk = speed > 8 ? u.walk + dt * Math.min(16, speed / 9) : u.walk * 0.85;
-    g.position.set(x * S, 0, y * S);
-    g.rotation.y = -dir;
+  // Put a figure where its game object is and animate it. Far-off figures are hidden (the haze covers them anyway).
+  function place(g, x, y, dir, dt, extra = {}) {
+    if (g.userData.pose === false) { g.position.set(x * S, 0, y * S); return; }
+    const far = Math.hypot(x * S - camera.position.x, y * S - camera.position.z) > 30;
+    g.visible = !far;
+    FIG.pose(g, { x, y, dir, dt, t: state.time, S, roll: -1, ...extra });
     castShadow(g);
-    const swing = speed > 8 ? Math.sin(u.walk) * 0.5 : 0;
-    u.legL.rotation.z = swing; u.legR.rotation.z = -swing;
-    u.inner.position.y = speed > 8 ? Math.abs(Math.sin(u.walk)) * 0.035 : 0;
-    u.inner.rotation.x = 0;
-    u.inner.rotation.z = lying ? Math.PI / 2 : 0;
-    if (lying) u.inner.position.y = 0.17;
   }
+  const drop = (g) => { scene.remove(g); if (g.userData.hips) FIG.dispose(g); };
 
   // ---------- Pickups, cards, cones, markers ----------
   const coinGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.03, 14);
@@ -964,32 +872,35 @@ if (renderer) {
 
     // ZAY
     let zay = figures.get(p);
-    if (zay && zay.userData.town !== town) { scene.remove(zay); figures.delete(p); }
+    if (zay && zay.userData.town !== town) { drop(zay); figures.delete(p); }
     zay = figureFor(p, () => zayFigure(town));
-    place(zay, p.x, p.y, p.dir, dt);
-    zay.userData.tail.rotation.y = Math.sin(t * 5 + p.step) * 0.5;
+    place(zay, p.x, p.y, p.dir, dt, { z: p.z || 0, roll: p.rollT > 0 ? 1 - p.rollT / 0.42 : -1, crouch: Math.max(p.hidden ? 0.75 : 0, (p.landT || 0) / 0.18 * 0.5), throwing: p.throwT > 0 ? 1 - p.throwT / 0.3 : 0 });
+    if (p.throwT > 0) p.throwT -= dt;
     zay.userData.ledger.visible = !!p.hasLedger;
     const faded = p.hidden || (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0);
-    zay.traverse((o) => { if (o.isMesh && o.material && !o.material.isMeshBasicMaterial) { if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = true; } o.material.transparent = faded; o.material.opacity = faded ? 0.5 : 1; } });
+    const zm = zay.userData.mat;
+    if (zm.transparent !== faded) { zm.transparent = faded; zm.opacity = faded ? 0.55 : 1; zm.needsUpdate = true; }
     zayLight.position.set(p.x * S, 1.3, p.y * S);
 
     // Guards
     for (const g of state.guards) {
       const f = figureFor(g, () => guardFigure(g));
-      place(f, g.x, g.y, g.dir, dt, { lying: g.state === 'down' });
-      f.userData.coatMat.color.setHex(g.windup > 0 ? 0x5a2430 : hex((ENEMIES[g.kind] || ENEMIES.guard).coat));
+      const hunting = g.state === 'alert' || g.state === 'suspicious' || g.state === 'search';
+      place(f, g.x, g.y, g.dir, dt, { lying: g.state === 'down', windup: g.windup > 0 ? Math.min(1, g.windup * 3) : 0, scan: !hunting && g.state !== 'stunned',
+        look: g.state === 'alert' ? p : null, crouch: g.state === 'stunned' ? 0.45 : 0 });
+      f.userData.mat.color.setHex(g.windup > 0 ? 0xff8f8f : 0xffffff);
       updateCone(g);
       updateMark(g, f);
     }
-    // People
+    // People: they turn their heads to ZAY when he comes close, and the ones with something to say gesture.
+    const close = (o, r) => Math.hypot(o.x - p.x, o.y - p.y) < r;
     for (const n of state.npcs || []) {
       const f = figureFor(n, () => npcFigure(n));
-      place(f, n.x, n.y, n.dir, dt);
-      if (npcLook(n).seated) { f.userData.inner.position.y = -0.2; f.userData.legL.rotation.z = f.userData.legR.rotation.z = 1.4; }
+      place(f, n.x, n.y, n.dir, dt, { seated: !!npcLook(n).seated, look: close(n, 120) ? p : null, talk: (n.who === 'hustle' || n.who === 'needy') && close(n, 90) });
     }
-    for (const w of state.walkers || []) place(figureFor(w, () => npcFigure(w)), w.x, w.y, w.dir, dt);
-    if (KID.x > -1e4) place(figureFor(KID, kidFigure), KID.x, KID.y, Math.atan2(p.y - KID.y, p.x - KID.x), dt);
-    if (FENCE.x > -1e4 && FENCE.x) place(figureFor(FENCE, fenceFigure), FENCE.x, FENCE.y, Math.PI / 2, dt);
+    for (const w of state.walkers || []) place(figureFor(w, () => npcFigure(w)), w.x, w.y, w.dir, dt, { look: w.startled > 0 || close(w, 46) ? p : null });
+    if (KID.x > -1e4) place(figureFor(KID, kidFigure), KID.x, KID.y, Math.atan2(p.y - KID.y, p.x - KID.x), dt, { look: p });
+    if (FENCE.x > -1e4 && FENCE.x) place(figureFor(FENCE, fenceFigure), FENCE.x, FENCE.y, Math.PI / 2, dt, { look: close(FENCE, 130) ? p : null, talk: close(FENCE, 80) });
 
     // Pickups and things
     for (const c of state.coins) {
@@ -1041,7 +952,7 @@ if (renderer) {
     for (let i = ri; i < ringPool.length; i++) ringPool[i].visible = false;
 
     // Remove figures for things that are gone (picked up, guards from another visit, finished effects).
-    for (const [obj, g] of figures) if (g.userData.seen !== frameNo) { scene.remove(g); figures.delete(obj); }
+    for (const [obj, g] of figures) if (g.userData.seen !== frameNo) { drop(g); figures.delete(obj); }
     for (const c of allCones) if (c.userData.seen !== frameNo) c.visible = false;
     for (const m of allMarks) if (m.userData.seen !== frameNo) m.visible = false;
 
