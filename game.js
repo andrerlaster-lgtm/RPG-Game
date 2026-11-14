@@ -1607,11 +1607,13 @@ document.getElementById('restart-pause').addEventListener('click', async () => {
 document.getElementById('pause-btn').addEventListener('click', () => { if (state.running) togglePause(); });
 
 // Battles always draw on the 2D canvas; the field uses the 3D canvas when that view is on.
-function show3D(on) {
-  if (!window.R3D || R3D.canvas.hidden === !on) return;
+// overlay: keep the 2D canvas showing on top of the 3D one (battles in 3D draw numbers and cursors there).
+function show3D(on, overlay = false) {
+  if (!window.R3D) return;
   R3D.canvas.hidden = !on;
-  canvas.hidden = on;
+  canvas.hidden = on && !overlay;
 }
+const inBattle = () => state.mode === 'battle' || (state.mode === 'dialog' && typeof DLG !== 'undefined' && DLG.prevMode === 'battle');
 let last = performance.now();
 function frame(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
@@ -1641,10 +1643,14 @@ function frame(now) {
   if (state.paused || state.mode !== 'field') { state.player.vx = state.player.vy = 0; }
   drawMinimap();
   pressed.clear();
-  const field3d = !!LEVEL && state.mode !== 'battle' && use3D();
-  show3D(field3d);
+  // Battles happen in the 3D street when the 3D view is on (the 2D canvas adds numbers and cursors on top);
+  // in Classic they keep the 2D battle screen. A line spoken mid-battle keeps the battle on screen.
+  const battle = !!LEVEL && B.active && inBattle();
+  const battle3d = battle && use3D();
+  const field3d = !!LEVEL && !battle && use3D();
+  show3D(field3d || battle3d, battle3d);
   if (!LEVEL) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#07080f'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-  else if (state.mode === 'battle') renderBattle();
+  else if (battle) { if (battle3d) R3D.render(dt); renderBattle(battle3d); }
   else {
     updateCamera(dt);
     if (field3d) R3D.render(dt); else render();

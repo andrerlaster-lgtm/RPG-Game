@@ -932,7 +932,7 @@ if (renderer) {
     g.position.set(x * S, 0, y * S);
     g.rotation.y += angDiff(g.rotation.y, -dir) * Traversal.damp(18, dt);
     castShadow(g);
-    if (u.rig) { u.rig.update(state.paused || state.mode !== 'field' ? 0 : dt, speed, state.player); return; }
+    if (u.rig) { u.rig.update(state.paused || !(state.mode === 'field' || fighting()) ? 0 : dt, fighting() ? 0 : speed, state.player); return; }
     const swing = Math.sin(u.walk) * 0.62 * u.stride;
     u.legL.rotation.z = swing; u.legR.rotation.z = -swing;
     u.armL.rotation.z = -swing * 0.75; u.armR.rotation.z = swing * 0.75;
@@ -1147,6 +1147,117 @@ if (renderer) {
     if (zay) zay.visible = !nearPlayer; // only when trapped between ZAY and a wall
   }
 
+  // ---------- Battles in the street ----------
+  // battle.js runs the fight (B); here the same street is filmed side-on. ZAY and the guards stand where
+  // stageBattle() put them, lunge at whoever they hit, and the camera picks a side with a clear view.
+  const ZERO = { x: 0, y: 0 };
+  const fighting = () => typeof B !== 'undefined' && B.active && (state.mode === 'battle' || (state.mode === 'dialog' && DLG.prevMode === 'battle'));
+  function lungeOffset(c) {
+    const a = B.anim;
+    if (!c || !a || a.actor !== c || !['hit', 'slash', 'steal'].includes(a.type)) return ZERO;
+    const t = a.targets[0] || (c.side === 'party' ? B.enemies.find((e) => e.alive) : state.party[0]);
+    if (!t) return ZERO;
+    const from = c.side === 'party' ? state.player : c.guard, to = t.side === 'party' ? state.player : t.guard;
+    const k = Math.min(1, a.t / a.dur), hitK = a.hit / a.dur;
+    const reach = k < hitK ? Ease.backOut(k / hitK) : k < hitK + 0.15 ? 1 : 1 - Ease.sineInOut((k - hitK - 0.15) / (1 - hitK - 0.15));
+    const dx = to.x - from.x, dy = to.y - from.y, d = Math.hypot(dx, dy) || 1, go = Math.max(0, d - 34) * reach;   // stop just short
+    return { x: dx / d * go, y: dy / d * go };
+  }
+  // A guard's arms in a fight: club raised on the wind-up, brought down on the blow; rocks back when hit.
+  function poseFoe(f, c) {
+    const u = f.userData, a = B.anim;
+    if (!c.alive) return;
+    if (a && a.actor === c && a.type === 'hit') {
+      const k = a.t / a.hit;
+      u.armR.rotation.z = k < 1 ? 0.4 + 2.4 * Ease.cubicOut(k) : 2.8 - Math.min(1, (a.t - a.hit) / 0.12) * 2.0;
+      u.armL.rotation.z = 0.5;
+    }
+    if (c.flash > 0) u.inner.rotation.z = 0.28 * (c.flash / 0.25);
+  }
+  let battleCam = null;
+  const _bv = new THREE.Vector3(), _bl = new THREE.Vector3();
+  // Is the straight line from a to b (world units) clear of buildings, roofs and stalls?
+  function clearLine(a, b) {
+    for (let i = 1; i <= 24; i++) {
+      const k = i / 24, x = a.x + (b.x - a.x) * k, y = a.y + (b.y - a.y) * k, z = a.z + (b.z - a.z) * k;
+      const tx = Math.floor(x), tz = Math.floor(z);
+      const top = tx < 0 || tz < 0 || tx >= W || tz >= H ? WALL_H : (TOPS[tz * W + tx] || (grid[tz][tx] === '#' ? WALL_H : 0));
+      if (y < top + 0.15) return false;
+    }
+    return true;
+  }
+  function startBattleCam() {
+    const st = B.stage;
+    if (!st) { battleCam = null; return; }
+    const homes = [st.hero, ...B.guardRefs.map((g) => g.battleHome || g)];
+    const mid = new THREE.Vector3(homes.reduce((v, q) => v + q.x, 0) / homes.length * S, 0, homes.reduce((v, q) => v + q.y, 0) / homes.length * S);
+    const ax = Math.cos(st.axis), az = Math.sin(st.axis);
+    const eyes = homes.map((q) => new THREE.Vector3(q.x * S, 1.0, q.y * S));
+    const hx = st.hero.x * S - mid.x, hz = st.hero.y * S - mid.z;
+    // Is there room for the camera itself (no wall within a short reach)?
+    const roomy = (pos) => {
+      for (const [ox, oz] of [[0, 0], [0.35, 0], [-0.35, 0], [0, 0.35], [0, -0.35]]) {
+        const tx = Math.floor(pos.x + ox), tz = Math.floor(pos.z + oz);
+        if (tx < 0 || tz < 0 || tx >= W || tz >= H) return false;
+        if ((TOPS[tz * W + tx] || (grid[tz][tx] === '#' ? WALL_H : 0)) > pos.y - 0.3) return false;
+      }
+      return true;
+    };
+    // How far back the camera must stand for every fighter to fit across the screen (phones are narrow).
+    const tanH = Math.tan(camera.fov * Math.PI / 360) * camera.aspect;
+    const needFor = (nx, nz) => {
+      const along = homes.map((q) => (q.x * S - mid.x) * nz - (q.y * S - mid.z) * nx);
+      return (Math.max(...along) - Math.min(...along)) / 2 / tanH + 0.9 / tanH;
+    };
+    let best = null;
+    [[4.6, 1.8], [3.9, 2.4], [3.2, 3.2], [2.6, 4.2], [2.0, 5.2], [1.6, 6.4], [1.2, 7.6]].forEach(([d0, h0], tier) => {
+      for (const side of [1, -1]) for (const off of [0, 0.3, -0.3, 0.6, -0.6]) {
+        const bx = -az * side, bz = ax * side, nx = bx * Math.cos(off) - bz * Math.sin(off), nz = bx * Math.sin(off) + bz * Math.cos(off);
+        // Stand back far enough to fit everyone; if that's further than this tier's distance, keep the same
+        // straight-line distance by going higher and looking down instead.
+        const reach = Math.hypot(d0, h0 - 0.9), need = Math.max(d0, Math.min(needFor(nx, nz), 9));
+        const dist = Math.min(need, reach), h = 0.9 + Math.sqrt(Math.max(0, need * need - dist * dist)) + (h0 - 0.9) * (dist === d0 ? 1 : 0.6);
+        const pos = new THREE.Vector3(mid.x + nx * dist, h, mid.z + nz * dist);
+        if (!roomy(pos) || !eyes.every((e) => clearLine(e, pos))) continue;
+        const zayRight = hx * nz - hz * nx > 0;   // ZAY on the right of the picture, the guards on the left
+        const score = tier * 10 + Math.abs(off) * 4 + (zayRight ? 0 : 5);
+        if (!best || score < best.score) best = { score, nx, nz, dist, h };
+      }
+    });
+    if (!best) best = { nx: -az, nz: ax, dist: 1.6, h: 6 };   // nothing clear: look down from above
+    battleCam = { ...best, mid, t: 0, from: camera.position.clone(), fromLook: look.clone() };
+  }
+  function updateBattleCamera(dt) {
+    const c = battleCam;
+    c.t += dt;
+    const sway = Math.sin(c.t * 0.3) * 0.06, cs = Math.cos(sway), sn = Math.sin(sway);
+    const rx = c.nx * cs - c.nz * sn, rz = c.nx * sn + c.nz * cs;
+    const focus = _bl.copy(c.mid);
+    const a = B.anim;
+    if (a && a.actor) {   // lean toward whoever is acting
+      const who = a.actor.side === 'party' ? state.player : a.actor.guard;
+      focus.x += (who.x * S - focus.x) * 0.22; focus.z += (who.y * S - focus.z) * 0.22;
+    }
+    // Keep the fighters above the battle menus: aim lower when the menus take up more of the screen.
+    const ui = Math.max(0, (bui.root.offsetHeight || 0) / Math.max(1, window.innerHeight) - (isTouch ? 0.17 : 0));
+    const want = _bv.set(focus.x + rx * c.dist, c.h, focus.z + rz * c.dist);
+    const lookY = 0.85 - ui * c.dist * 0.75;
+    const k = Ease.sineInOut(Math.min(1, c.t / 0.85));
+    camera.position.copy(c.from).lerp(want, k);
+    look.set(c.fromLook.x + (focus.x - c.fromLook.x) * k, c.fromLook.y + (lookY - c.fromLook.y) * k, c.fromLook.z + (focus.z - c.fromLook.z) * k);
+    const q = (B.shake || 0) ** 2 * 0.12;
+    camera.position.x += (Math.random() * 2 - 1) * q; camera.position.y += (Math.random() * 2 - 1) * q;
+    camera.lookAt(look);
+  }
+  // Screen position (CSS pixels) of a spot on the map, and how many pixels tall a person stands there.
+  const _pp = new THREE.Vector3();
+  function project(x, y) {
+    _pp.set(x * S, 0, y * S).project(camera);
+    const sx = (_pp.x + 1) / 2 * window.innerWidth, sy = (1 - _pp.y) / 2 * window.innerHeight;
+    _pp.set(x * S, 1.25, y * S).project(camera);
+    return { x: sx, y: sy, px: Math.abs(sy - (1 - _pp.y) / 2 * window.innerHeight) };
+  }
+
   // ---------- Each frame ----------
   function render(dt) {
     if (!LEVEL) return;
@@ -1162,7 +1273,8 @@ if (renderer) {
     let zay = figures.get(p);
     if (zay && (zay.userData.town !== town || (!!heroRig && !zay.userData.rig))) { releaseFigure(zay); figures.delete(p); }
     zay = figureFor(p, () => playableFigure(town));
-    place(zay, p.x, p.y, p.dir, dt);
+    const zo = fighting() ? lungeOffset(state.party[0]) : ZERO;
+    place(zay, p.x + zo.x, p.y + zo.y, p.dir, dt);
     if (!zay.userData.rig && p.dashT > 0) { zay.userData.inner.rotation.z = -(1 - p.dashT / 0.17) * Math.PI * 2; zay.userData.inner.position.y = 0.25; }
     if (zay.userData.tail) zay.userData.tail.rotation.y = Math.sin(t * 5 + p.step) * 0.5;
     zay.userData.ledger.visible = !!p.hasLedger;
@@ -1174,8 +1286,12 @@ if (renderer) {
     // Guards
     for (const g of state.guards) {
       const f = figureFor(g, () => guardFigure(g));
-      place(f, g.x, g.y, g.dir, dt, { lying: g.state === 'down' });
-      f.userData.coatMat.color.setHex(g.windup > 0 ? 0x5a2430 : hex((ENEMIES[g.kind] || ENEMIES.guard).coat));
+      const foe = fighting() ? B.enemies.find((e) => e.guard === g) : null;
+      const go = foe ? lungeOffset(foe) : ZERO;
+      place(f, g.x + go.x, g.y + go.y, g.dir, dt, { lying: g.state === 'down' || (foe && !foe.alive) });
+      if (foe) poseFoe(f, foe);
+      f.userData.coatMat.color.setHex(g.windup > 0 || (foe && foe.flash > 0) ? 0x5a2430 : hex((ENEMIES[g.kind] || ENEMIES.guard).coat));
+      if (fighting()) { if (g.__cone) g.__cone.visible = false; if (g.__mark) g.__mark.visible = false; continue; }
       updateCone(g);
       updateMark(g, f);
     }
@@ -1299,7 +1415,7 @@ if (renderer) {
       m.sp.position.set(m.x + Math.sin(t * 0.15 + m.ph) * 0.9, 0.75 + Math.sin(t * 0.2 + m.ph * 2) * 0.1, m.z + Math.cos(t * 0.12 + m.ph) * 0.6);
     }
 
-    updateCamera3d(dt);
+    if (fighting() && battleCam) updateBattleCamera(dt); else updateCamera3d(dt);
     if (facadeDetail) for (const batch of facadeDetail.children) {
       const sphere = batch.boundingSphere;
       batch.visible = camera.position.distanceTo(sphere.center) < sphere.radius + (gfxLow() ? 8 : 18);
@@ -1313,7 +1429,7 @@ if (renderer) {
     renderer.info.reset();
     try { if (post.on) post.render(dt, { alert: alertS }); else renderer.render(scene, camera); }
     finally { if (refreshMoon) heroRig?.setShadowCaster(true); }
-    alertS += ((state.guards.some((g) => g.state === 'alert') ? 1 : 0) - alertS) * Math.min(1, dt * 3);
+    alertS += ((state.guards.some((g) => g.state === 'alert') ? (fighting() ? 0.3 : 1) : 0) - alertS) * Math.min(1, dt * 3);   // softer once the fight is on
     // Auto: about 4 seconds below ~25 frames a second drops to Low for the rest of the session.
     const now = performance.now(), ms = now - lastNow; lastNow = now;
     if (SETTINGS.quality === 'auto' && !autoLow && ms < 2500 && !document.hidden) {   // longer gaps are a hidden tab or a load, not slowness
@@ -1322,5 +1438,5 @@ if (renderer) {
     }
   }
 
-  window.R3D = { ready: true, render, get autoLow() { return autoLow; }, playHero: role => heroRig?.play(role), hero: () => heroRig?.debug() || { loaded: false, error: heroError }, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ post: post.on, lighting: atmosphere.current, quality: renderer.shadowMap.enabled ? 'high' : 'low', calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
+  window.R3D = { ready: true, render, project, startBattle: () => { snapCamera = false; startBattleCam(); }, battleCam: () => battleCam && { dist: battleCam.dist, h: battleCam.h, score: battleCam.score }, get autoLow() { return autoLow; }, playHero: role => heroRig?.play(role), hero: () => heroRig?.debug() || { loaded: false, error: heroError }, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ post: post.on, lighting: atmosphere.current, quality: renderer.shadowMap.enabled ? 'high' : 'low', calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
 }

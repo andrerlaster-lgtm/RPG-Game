@@ -30,7 +30,11 @@ When a quest prompt appears, press **E** / **Use** / **A**. Pick an option with 
 
 ## Battles (Final Fantasy style)
 
-If an alerted guard catches ZAY, the screen switches to a battle: guards on the left, your party on the right, blue command windows at the bottom. It uses Active Time Battle in wait mode: each fighter's gauge fills over time, and the clock pauses while you choose.
+If an alerted guard catches ZAY, a battle starts. In the 3D view it happens right there in the street: the guards step into a line a couple of tiles in front of ZAY (on the most open ground nearby), and the camera swings round to watch side-on, ZAY on the right and the guards on the left, with the blue command windows at the bottom. ZAY and the guards lunge at whoever they hit, guards raise their clubs before a blow, rock back when hit and lie knocked out after a win (they stay where they fell). In Classic it's the 2D battle screen as before. It uses Active Time Battle in wait mode: each fighter's gauge fills over time, and the clock pauses while you choose.
+
+- **Timed presses:** when ZAY hits (Hit or Slash), a ring closes on the target; press Enter / Space / E (or tap anywhere on a phone) as it closes, within about a tenth of a second of the blow, for a **Precise!** hit (1.5× damage). When a guard swings, the ring closes on ZAY: press on the blow to **Block** (half damage). Only the first press counts, so mashing doesn't work. The first few battles show a tip.
+- **One guard left:** Hit and Steal go straight to him, with no target to pick.
+- Code: the fight's rules and the timing are in `battle.js` (`stageBattle`, `apply`, `TIMING_WINDOW`); filming it in 3D is in `render3d.js` (`startBattleCam`, `updateBattleCamera`, `lungeOffset`, `poseFoe`).
 
 - **Every character:** Hit, Item, Run.
 - **Class command:** Rogue → **Steal** (gold or items; stolen gold goes to your pocket for the kid), Spellcaster → **Magic** (Fire, Ice, Cure; costs MP), Swordfighter → **Slash** (hits every enemy).
