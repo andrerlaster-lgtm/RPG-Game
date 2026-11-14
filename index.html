@@ -17,6 +17,7 @@
   <script src="people.js" defer></script>
   <script src="activities.js" defer></script>
   <script src="ui.js" defer></script>
+  <script src="traversal.js" defer></script>
   <script src="game.js" defer></script>
   <script src="battle.js" defer></script>
   <script src="inventory.js" defer></script>
@@ -65,16 +66,17 @@
       <div class="controls">
         <div><h2>Keyboard</h2>
           <ul>
-            <li><kbd>Arrow keys</kbd> move · <kbd>Shift</kbd> sprint (noisy)</li>
+            <li><kbd>WASD</kbd> move with camera · <kbd>Arrows</kbd> walk/turn · <kbd>Shift</kbd> sprint (noisy)</li>
             <li><kbd>E</kbd> takedown from behind, vault, grab, give</li>
             <li><kbd>Q</kbd> / right-click throw a card to distract</li>
             <li><kbd>Space</kbd> roll · <kbd>I</kbd> bag</li>
+            <li>3D camera: drag the view · wheel or +/− zoom · C recenter</li>
             <li>Battle: <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> confirm · <kbd>Esc</kbd> back</li>
           </ul>
         </div>
         <div><h2>Touch</h2>
           <ul>
-            <li>Wheel: drag to move (3D: up walks, sideways turns)</li>
+            <li>Wheel: drag to move (3D: up walks, sideways turns). Drag the open view to look around.</li>
             <li>Use · Card · Sprint · Roll buttons · Bag (top)</li>
             <li>Battle: tap a command, then a target</li>
           </ul>

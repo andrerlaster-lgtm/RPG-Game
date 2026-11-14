@@ -10,6 +10,7 @@
 // proper CC0 character models are added (see README, "3D view").
 
 import * as THREE from './vendor/three/three.module.min.js';
+import { mergeGeometries } from './vendor/three/addons/BufferGeometryUtils.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
 import { makeCobbles, makeTint, withTint, makeGlow, makeWindow, makeBlob, makeMist } from './light3d.js';
 
@@ -54,6 +55,15 @@ if (renderer) {
   const moon = new THREE.DirectionalLight(0x86a0e0, 0.85);
   moon.position.set(-6, 14, -4);
   scene.add(moon, moon.target);
+  // Static moon shadows are refreshed only when a district is rebuilt. Moving people retain
+  // the lantern-aware contact shadows, avoiding six extra shadow renders on every frame.
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+  moon.castShadow = true;
+  moon.shadow.mapSize.setScalar(isTouch ? 1024 : 2048);
+  moon.shadow.bias = -0.0004;
+  moon.shadow.normalBias = 0.025;
 
   // Street lamps light the scene; only the ones nearest ZAY get a real light (phones can't afford all).
   const LIGHTS = [];
@@ -203,6 +213,7 @@ if (renderer) {
   const SHARED_TEX = new Set([wallTex, roofTex, timberTex, stoneTex, cobbles.albedo, glowTex, windowTex, blobTex, mistTex, ...SLOPES.map((m) => m.map)]);
   let tintTex = null;
   let MIST = [];
+  let riverMaterial = null;
   const addMat = (map, color, opacity) => new THREE.MeshBasicMaterial({ map, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
   const POOL_BASE = 0.34, HALO_BASE = 0.8;
   const POOL_MAT = addMat(glowTex, 0xff9232, POOL_BASE);
@@ -211,6 +222,7 @@ if (renderer) {
   const HALO_MAT = new THREE.SpriteMaterial({ map: glowTex, color: 0xffa646, transparent: true, opacity: HALO_BASE, blending: THREE.AdditiveBlending, depthWrite: false });
   // How high the top of each tile is (walls, plus the roof over them), for the camera.
   let TOPS = new Float32Array(0);
+  let galleries = [];
 
   // ---------- The district (rebuilt whenever a new map loads) ----------
   let world = null, builtFor = null;
@@ -218,16 +230,23 @@ if (renderer) {
   function build() {
     if (world) {
       scene.remove(world);
+      const sharedMats = new Set([...mats.values(), ...Object.values(WALLS), ...SLOPES, roofMat, POOL_MAT, MIST_MAT, HALO_MAT]);
+      const disposed = new Set();
       world.traverse((o) => {
-        if (o.userData.keep) return;   // shared with the loaded models
+        if (o.userData.keep) return;
         if (o.geometry) o.geometry.dispose();
-        const tex = o.material && !Array.isArray(o.material) && o.material.map;
-        if (tex && !SHARED_TEX.has(tex)) tex.dispose();
+        const materials = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+        for (const mat of materials) {
+          if (sharedMats.has(mat) || disposed.has(mat)) continue;
+          disposed.add(mat);
+          if (mat.map && !SHARED_TEX.has(mat.map)) mat.map.dispose();
+          mat.dispose();
+        }
       });
     }
     world = new THREE.Group();
     builtFor = LEVEL;
-    LABEL_SPRITES = []; EXIT_MARKS = [];
+    LABEL_SPRITES = []; EXIT_MARKS = []; galleries = [];
 
     // Ground: the same painted map as the Classic view.
     const groundTex = new THREE.CanvasTexture(mapCanvas);
@@ -281,6 +300,7 @@ if (renderer) {
       else if (t === 'w') water.push([tx, ty]);
     }
     const m4 = new THREE.Matrix4();
+    TOPS = new Float32Array(W * H);
     if (solid.length) buildBlocks(m4);
     if (hedges.length) {
       const bush = new THREE.IcosahedronGeometry(0.55, 1);
@@ -289,12 +309,28 @@ if (renderer) {
       hedges.forEach(([tx, ty], i) => hm.setMatrixAt(i, m4.compose(new THREE.Vector3(tx + 0.5, 0.38, ty + 0.5), q, sc)));
       world.add(hm);
     }
+    riverMaterial = null;
     if (water.length) {
-      const wm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0x1c3a66, transparent: true, opacity: 0.45 }), water.length);
+      // A lit, continuous surface above the painted map (the old river plane sat below it).
+      riverMaterial = new THREE.MeshPhongMaterial({ color: 0x162f43, specular: 0x8bacc4, shininess: 85 });
+      riverMaterial.onBeforeCompile = (shader) => {
+        shader.uniforms.riverTime = { value: 0 };
+        riverMaterial.userData.shader = shader;
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 riverXZ;')
+          .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nriverXZ = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xz;');
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 riverXZ; uniform float riverTime;')
+          .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+            float ripple = sin(riverXZ.x * 9.0 + riverXZ.y * 5.0 + riverTime * 1.7);
+            float crossWave = cos(riverXZ.y * 13.0 - riverXZ.x * 3.0 - riverTime * 1.1);
+            normal = normalize(normal + vec3(ripple * 0.13, crossWave * 0.08, 0.0));
+            diffuseColor.rgb *= 0.88 + ripple * crossWave * 0.12;`);
+      };
+      const wm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), riverMaterial, water.length);
       const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), one = new THREE.Vector3(1, 1, 1);
-      water.forEach(([tx, ty], i) => wm.setMatrixAt(i, m4.compose(new THREE.Vector3(tx + 0.5, -0.05, ty + 0.5), q, one)));
+      water.forEach(([tx, ty], i) => wm.setMatrixAt(i, m4.compose(new THREE.Vector3(tx + 0.5, 0.012, ty + 0.5), q, one)));
       world.add(wm);
     }
+    buildStreetDetail(indoors);
 
     // Windows on street-facing walls: warm lit panes or dark shutters.
     const lit = [], shut = [];
@@ -349,6 +385,11 @@ if (renderer) {
     for (const pr of PROPS) {
       const st = PROP_STYLE[pr.kind] || PROP_STYLE.table;
       const h = Math.max(0.12, st.h * WALL_H);
+      for (let tz = Math.floor(pr.y * S); tz < Math.ceil((pr.y + pr.h) * S); tz++) {
+        for (let tx = Math.floor(pr.x * S); tx < Math.ceil((pr.x + pr.w) * S); tx++) {
+          if (tx >= 0 && tz >= 0 && tx < W && tz < H) TOPS[tz * W + tx] = Math.max(TOPS[tz * W + tx], pr.kind === 'stall' ? 1.9 : h);
+        }
+      }
       const g = new THREE.Group();
       g.position.set((pr.x + pr.w / 2) * S, 0, (pr.y + pr.h / 2) * S);
       if (pr.kind === 'stall' && MODELS) {
@@ -445,11 +486,24 @@ if (renderer) {
       EXIT_MARKS.push(m);
     }
 
+    world.traverse((o) => {
+      if (!o.isMesh) return;
+      const materials = Array.isArray(o.material) ? o.material : [o.material];
+      const opaque = materials.every((m) => !m.transparent && !m.isMeshBasicMaterial);
+      o.castShadow = opaque && !(o.geometry.type === 'PlaneGeometry');
+      o.receiveShadow = opaque;
+    });
+    const span = Math.max(W, H);
+    moon.position.set(W / 2 - span * 0.5, span, H / 2 - span * 0.3);
+    moon.target.position.set(W / 2, 0, H / 2);
+    Object.assign(moon.shadow.camera, { left: -span * 0.75, right: span * 0.75, top: span * 0.75, bottom: -span * 0.75, near: 0.5, far: span * 3 });
+    moon.shadow.camera.updateProjectionMatrix();
+    renderer.shadowMap.needsUpdate = true;
     scene.add(world);
-    for (const [obj, g] of figures) { scene.remove(g); figures.delete(obj); }
+    for (const [obj, g] of figures) { releaseFigure(g); figures.delete(obj); delete obj.__cone; delete obj.__mark; }
     // Cones and marks belong to the last visit's guards.
     for (const c of allCones) { scene.remove(c); c.geometry.dispose(); }
-    for (const m of allMarks) { scene.remove(m); m.material.map.dispose(); }
+    for (const m of allMarks) { scene.remove(m); m.material.map.dispose(); m.material.dispose(); }
     allCones.clear(); allMarks.clear();
     snapCamera = true;
   }
@@ -500,7 +554,7 @@ if (renderer) {
       for (const a of [0, len]) gables[finish].push([P(a, 0, y0), P(a, span, y0), P(a, span / 2, y1)]);
       for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) {
         const b = alongX ? j + 0.5 : i + 0.5;
-        TOPS[(r.y + j) * W + r.x + i] = WALL_H + pitch * (1 - Math.abs(b - span / 2) / (span / 2));
+        TOPS[(r.y + j) * W + r.x + i] = WALL_H + pitch; // conservative ridge envelope, including tile edges
       }
     }
     const box = new THREE.BoxGeometry(1, WALL_H, 1);
@@ -538,6 +592,47 @@ if (renderer) {
       const mat = WALLS[finish].clone();
       mat.side = THREE.DoubleSide;
       world.add(new THREE.Mesh(g, mat));
+    }
+  }
+
+  // Street-facing iron galleries and garden planting, generated from existing map surfaces.
+  // Everything is batched by material; nothing changes the walkable map or the lore.
+  function buildStreetDetail(indoors) {
+    if (indoors) return;
+    const iron = [], stone = [], leaves = [];
+    const estate = (DISTRICTS[state.district] || {}).look === 'rogue';
+    const addBox = (list, x, y, z, w, h, d) => list.push(new THREE.Matrix4().compose(
+      new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(w, h, d)));
+    for (const e of EDGES) {
+      if (!e.win) continue;
+      const x = (e.x0 + e.x1) * S / 2, z = (e.y0 + e.y1) * S / 2;
+      const [nx, nz] = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }[e.side];
+      const tx = Math.floor(x + nx * 0.5), tz = Math.floor(z + nz * 0.5);
+      if (grid[tz]?.[tx] !== '.' || (Math.round(x + z) % 3 === 0)) continue;
+      const box = (list, along, out, y, w, h, d) => addBox(list, x + nz * along + nx * out, y, z - nx * along + nz * out,
+        nx ? d : w, h, nx ? w : d);
+      box(stone, 0, 0.22, 1.43, 0.94, 0.09, 0.48);
+      box(iron, 0, 0.46, 1.9, 0.94, 0.035, 0.035);
+      box(iron, 0, 0.46, 1.56, 0.94, 0.025, 0.025);
+      for (const side of [-0.45, 0.45]) box(iron, side, 0.24, 1.9, 0.035, 0.035, 0.46);
+      for (let i = -3; i <= 3; i++) {
+        box(iron, i * 0.14, 0.46, 1.72, 0.022, 0.36, 0.022);
+        // A small gilded diamond on alternating wrought-iron balusters.
+        if (i % 2 === 0) box(stone, i * 0.14, 0.46, 1.72, 0.055, 0.075, 0.04);
+      }
+      // Camera envelope includes the projecting gallery, but pedestrians still walk below it.
+      galleries.push({ x: x + nx * 0.24, z: z + nz * 0.24, w: nx ? 0.48 : 0.94, d: nx ? 0.94 : 0.48 });
+    }
+    for (let z = 1; z < H - 1; z++) for (let x = 1; x < W - 1; x++) {
+      if (grid[z][x] !== 'g') continue;
+      const hash = ((x * 73856093) ^ (z * 19349663)) >>> 0;
+      if (hash % 3) continue;
+      for (let i = 0; i < 3; i++) addBox(leaves, x + 0.2 + i * 0.23, 0.13, z + 0.2 + ((hash >>> (i * 3)) % 6) * 0.1, 0.13, 0.26 + i * 0.06, 0.13);
+    }
+    for (const [list, color] of [[iron, 0x292c36], [stone, estate ? 0xa79775 : 0x8f744d], [leaves, 0x3e6541]]) {
+      if (!list.length) continue;
+      const batch = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), lambert(color), list.length);
+      list.forEach((m, i) => batch.setMatrixAt(i, m)); world.add(batch);
     }
   }
 
@@ -604,8 +699,16 @@ if (renderer) {
     const inner = new THREE.Group();
     inner.scale.setScalar(scale);
     g.add(inner);
-    const legL = mesh(capsule(0.075, 0.28), lambert(low), 0, 0.2, -0.09);
-    const legR = mesh(capsule(0.075, 0.28), lambert(low), 0, 0.2, 0.09);
+    function limb(z, y, length, radius, color) {
+      const joint = new THREE.Group(); joint.position.set(0, y, z);
+      joint.add(mesh(capsule(radius, length), lambert(color), 0, -length / 2, 0));
+      return joint;
+    }
+    const legL = limb(-0.09, 0.39, 0.28, 0.065, low), legR = limb(0.09, 0.39, 0.28, 0.065, low);
+    for (const leg of [legL, legR]) leg.add(mesh(new THREE.BoxGeometry(0.18, 0.1, 0.12), lambert(0x17151a), 0.035, -0.34, 0));
+    const armL = limb(-0.23, 0.76, 0.24, 0.055, coat), armR = limb(0.23, 0.76, 0.24, 0.055, coat);
+    for (const arm of [armL, armR]) arm.add(mesh(new THREE.SphereGeometry(0.052, 8, 6), lambert(skin), 0, -0.3, 0));
+    inner.add(armL, armR);
     const body = mesh(capsule(0.17, 0.3), lambert(coat), 0, 0.58, 0);
     body.scale.set(0.85, 1, 1.1);
     const trimM = mesh(new THREE.BoxGeometry(0.03, 0.34, 0.08), lambert(trim), 0.15, 0.6, 0);
@@ -638,7 +741,7 @@ if (renderer) {
     const sh = mesh(new THREE.PlaneGeometry(0.95, 0.95), SHADOW_MAT, 0, 0.014, 0);
     sh.rotation.order = 'YXZ'; sh.rotation.x = -Math.PI / 2; sh.renderOrder = 2;
     g.add(sh);
-    g.userData = { inner, legL, legR, body, head, shadow: sh };
+    g.userData = { inner, legL, legR, armL, armR, body, head, shadow: sh };
     return g;
   }
   function zayFigure(town) {
@@ -646,6 +749,30 @@ if (renderer) {
       ? { coat: 0x2c2f36, low: 0x1c1d22, trim: 0xb39a72, skin: 0x5a3b2b, hair: 0x1a110c, hairStyle: 'locs', eyes: 0xf3c25c }
       : { coat: 0x121218, low: 0x0b0b10, trim: 0x1c1c26, skin: 0x5a3b2b, hair: 0x1a110c, hairStyle: 'hood', eyes: 0xf3c25c });
     const inner = g.userData.inner;
+    // ZAY's silhouette: pointed ears, tied locs, long split coat, and a curved prehensile tail.
+    for (const side of [-1, 1]) {
+      const ear = mesh(new THREE.ConeGeometry(0.045, 0.19, 4), lambert(0x5a3b2b), 0.015, 0.95, side * 0.14);
+      ear.rotation.x = side * 1.05; inner.add(ear);
+    }
+    inner.add(mesh(new THREE.SphereGeometry(0.14, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.54), lambert(0x1a110c), 0.02, 0.94, 0));
+    for (const z of [-0.08, -0.04, 0, 0.04, 0.08]) {
+      const loc = mesh(capsule(0.018, 0.16), lambert(0x24170f), 0, 1.065 - Math.abs(z) * 0.4, z);
+      loc.rotation.z = Math.PI / 2; inner.add(loc);
+    }
+    const ponytail = new THREE.Group(); ponytail.position.set(-0.12, 1.03, 0);
+    for (let i = 0; i < 5; i++) {
+      const loc = mesh(capsule(0.022, 0.25 + i * 0.018), lambert(0x1a110c), -0.08, -0.13, (i - 2) * 0.035);
+      loc.rotation.z = -0.5; ponytail.add(loc);
+    }
+    ponytail.add(mesh(new THREE.SphereGeometry(0.047, 8, 6), lambert(0xb39a72), -0.04, -0.015, 0));
+    inner.add(ponytail); g.userData.ponytail = ponytail;
+    const coatPanels = [];
+    for (const side of [-1, 1]) {
+      const panel = new THREE.Group(); panel.position.set(-0.08, 0.5, side * 0.11);
+      panel.add(mesh(new THREE.BoxGeometry(0.17, 0.29, 0.16), lambert(town ? 0x2c2f36 : 0x121218), 0, -0.12, 0));
+      inner.add(panel); coatPanels.push(panel);
+    }
+    g.userData.coatPanels = coatPanels;
     // Katana across his back, gold at the guard.
     const blade = mesh(new THREE.BoxGeometry(0.03, 0.75, 0.025), lambert(0xc9c9d6), -0.17, 0.66, 0);
     blade.rotation.x = 0.8;
@@ -654,9 +781,12 @@ if (renderer) {
     // His tail, swaying behind him.
     const tail = new THREE.Group();
     tail.position.set(-0.15, 0.45, 0);
-    const t1 = mesh(capsule(0.035, 0.3), lambert(0x2a1a14), -0.17, -0.08, 0);
-    t1.rotation.z = 1.1;
-    tail.add(t1);
+    const tailCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0), new THREE.Vector3(-0.24, -0.14, 0),
+      new THREE.Vector3(-0.48, -0.19, 0.04), new THREE.Vector3(-0.7, -0.04, 0.07),
+      new THREE.Vector3(-0.73, 0.15, 0.06)
+    ]);
+    tail.add(mesh(new THREE.TubeGeometry(tailCurve, 16, 0.03, 6, false), lambert(0x2a1a14)));
     inner.add(tail);
     // The ledger, when he's carrying it.
     const ledger = mesh(new THREE.BoxGeometry(0.16, 0.2, 0.05), lambert(0x7a1f22), -0.05, 0.62, 0.2);
@@ -694,9 +824,32 @@ if (renderer) {
   // Each game object gets its own figure the first time it shows up; figures whose object is gone are removed.
   const figures = new Map();
   let frameNo = 0;
+  function releaseFigure(g) {
+    scene.remove(g);
+    g.traverse((o) => {
+      if (o.geometry && ![coinGeo, cardGeo, sparkGeo].includes(o.geometry)) o.geometry.dispose();
+      if (o.userData.ownMat) o.material.dispose();
+    });
+  }
+  function batchFigure(g) {
+    if (!g.userData.inner) return;
+    const groups = new Map();
+    for (const part of [...g.userData.inner.children]) {
+      if (!part.isMesh || part.children.length || part === g.userData.body || part === g.userData.ledger) continue;
+      part.updateMatrix();
+      const geo = part.geometry.clone().applyMatrix4(part.matrix);
+      if (!groups.has(part.material)) groups.set(part.material, []);
+      groups.get(part.material).push(geo);
+      g.userData.inner.remove(part); part.geometry.dispose();
+    }
+    for (const [mat, geos] of groups) {
+      const merged = mergeGeometries(geos); geos.forEach((geo) => geo.dispose());
+      g.userData.inner.add(new THREE.Mesh(merged, mat));
+    }
+  }
   function figureFor(obj, make) {
     let g = figures.get(obj);
-    if (!g) { g = make(); figures.set(obj, g); scene.add(g); g.userData.lx = obj.x; g.userData.ly = obj.y; g.userData.walk = 0; }
+    if (!g) { g = make(); batchFigure(g); g.rotation.y = -(obj.dir || 0); figures.set(obj, g); scene.add(g); g.userData.lx = obj.x; g.userData.ly = obj.y; g.userData.walk = 0; }
     g.userData.seen = frameNo;
     g.visible = true;
     return g;
@@ -723,15 +876,19 @@ if (renderer) {
     const moved = Math.hypot(x - u.lx, y - u.ly);
     u.lx = x; u.ly = y;
     const speed = dt > 0 ? moved / dt : 0;
-    u.walk = speed > 8 ? u.walk + dt * Math.min(16, speed / 9) : u.walk * 0.85;
+    u.walk += Math.min(moved, 12) / 11;
+    u.stride = (u.stride || 0) + (Math.min(1, speed / 118) - (u.stride || 0)) * Traversal.damp(14, dt);
     g.position.set(x * S, 0, y * S);
-    g.rotation.y = -dir;
+    g.rotation.y += angDiff(g.rotation.y, -dir) * Traversal.damp(18, dt);
     castShadow(g);
-    const swing = speed > 8 ? Math.sin(u.walk) * 0.5 : 0;
+    const swing = Math.sin(u.walk) * 0.62 * u.stride;
     u.legL.rotation.z = swing; u.legR.rotation.z = -swing;
-    u.inner.position.y = speed > 8 ? Math.abs(Math.sin(u.walk)) * 0.035 : 0;
+    u.armL.rotation.z = -swing * 0.75; u.armR.rotation.z = swing * 0.75;
+    u.inner.position.y = Math.abs(Math.sin(u.walk)) * 0.035 * u.stride;
+    if (u.ponytail) u.ponytail.rotation.z = Math.sin(u.walk) * 0.12 * u.stride;
+    if (u.coatPanels) u.coatPanels.forEach((panel, i) => { panel.rotation.z = -0.08 - Math.abs(Math.sin(u.walk + i * Math.PI)) * 0.2 * u.stride; });
     u.inner.rotation.x = 0;
-    u.inner.rotation.z = lying ? Math.PI / 2 : 0;
+    u.inner.rotation.z = lying ? Math.PI / 2 : -Math.min(0.12, speed / 1600);
     if (lying) u.inner.position.y = 0.17;
   }
 
@@ -768,7 +925,7 @@ if (renderer) {
       c = new THREE.Mesh(geo, coneMat.calm);
       c.renderOrder = 2;
       c.frustumCulled = false;
-      Object.defineProperty(g, '__cone', { value: c, enumerable: false });
+      Object.defineProperty(g, '__cone', { value: c, enumerable: false, configurable: true });
       scene.add(c);
     }
     return c;
@@ -806,7 +963,7 @@ if (renderer) {
       sp.scale.set(0.34, 0.34, 1);
       sp.renderOrder = 11;
       sp.userData.ctx = c.getContext('2d');
-      Object.defineProperty(g, '__mark', { value: sp, enumerable: false });
+      Object.defineProperty(g, '__mark', { value: sp, enumerable: false, configurable: true });
       scene.add(sp);
       allMarks.add(sp);
     }
@@ -863,41 +1020,79 @@ if (renderer) {
   const ringPool = [];
   const sparkGeo = new THREE.OctahedronGeometry(0.05);
 
-  // ---------- Chase camera ----------
-  let camYaw = 0, snapCamera = true;
-  const camPos = new THREE.Vector3(), look = new THREE.Vector3();
-  const CAM_BACK = 3.7, CAM_UP = 2.9, HEAD = 0.95;
-  // How far back the camera can sit before a building gets in the way (walks the grid from ZAY's head).
-  function clearDistance(px, pz, dx, dz, back, up) {
-    const steps = 24;
-    for (let i = 1; i <= steps; i++) {
-      const t = (i / steps) * back;
-      const x = px - dx * t, z = pz - dz * t, y = HEAD + (up - HEAD) * (t / back);
-      const tx = Math.floor(x), tz = Math.floor(z);
-      const out = tx < 0 || tz < 0 || tx >= W || tz >= H;
-      const top = out ? WALL_H : TOPS[tz * W + tx] || (grid[tz][tx] === '#' ? WALL_H : 0);
-      if (top && y < top + 0.15) return Math.max(0.6, t - 0.3);
+  // ---------- Orbit / chase camera ----------
+  let camYaw = 0, snapCamera = true, orbitHold = 0, orbitPointer = null;
+  let zoomBack = 3.7, pitch = 0.57, boom = 1;
+  const camPos = new THREE.Vector3(), look = new THREE.Vector3(), desired = new THREE.Vector3();
+  const HEAD = 0.85;
+  const canLook = () => use3D() && state.running && state.mode === 'field' && !state.paused && !state.over;
+  function cancelOrbit() {
+    if (orbitPointer !== null && el.hasPointerCapture(orbitPointer)) el.releasePointerCapture(orbitPointer);
+    orbitPointer = null;
+  }
+  function orbit(dx, dy) {
+    camYaw += dx; pitch = Math.max(0.24, Math.min(1.12, pitch + dy)); orbitHold = 3;
+  }
+  el.style.touchAction = 'none';
+  let pointerX = 0, pointerY = 0;
+  el.addEventListener('pointerdown', (e) => {
+    if (!canLook() || e.button !== 0 || orbitPointer !== null) return;
+    orbitPointer = e.pointerId; pointerX = e.clientX; pointerY = e.clientY;
+    el.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== orbitPointer || !canLook()) return;
+    orbit((e.clientX - pointerX) * 0.006, (e.clientY - pointerY) * 0.004);
+    pointerX = e.clientX; pointerY = e.clientY;
+  });
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) el.addEventListener(event, (e) => {
+    if (e.pointerId === orbitPointer) cancelOrbit();
+  });
+  el.addEventListener('wheel', (e) => {
+    if (!canLook()) return;
+    e.preventDefault();
+    zoomBack = Math.max(1.8, Math.min(6, zoomBack + Math.sign(e.deltaY) * 0.3));
+  }, { passive: false });
+  window.addEventListener('keydown', (e) => {
+    if (!canLook()) return;
+    if (e.key.toLowerCase() === 'c') { orbitHold = 0; camYaw = state.player.dir; }
+    if (['+', '=', '-', '_'].includes(e.key)) {
+      zoomBack = Math.max(1.8, Math.min(6, zoomBack + (['-', '_'].includes(e.key) ? 0.3 : -0.3)));
+      e.preventDefault();
     }
-    return back;
+  });
+  function cameraTop(x, z, y = Infinity) {
+    for (const b of galleries) if (y + 0.22 >= 1.38 && Math.abs(x - b.x) <= b.w / 2 && Math.abs(z - b.z) <= b.d / 2) return 1.94;
+    const tx = Math.floor(x), tz = Math.floor(z);
+    if (tx < 0 || tz < 0 || tx >= W || tz >= H) return WALL_H;
+    return TOPS[tz * W + tx] || 0;
   }
   function updateCamera3d(dt) {
     const p = state.player;
     const px = p.x * S, pz = p.y * S;
-    const target = p.dir;
     const snap = snapCamera;
-    if (snapCamera) { camYaw = target; snapCamera = false; }
-    else camYaw += angDiff(camYaw, target) * Math.min(1, dt * 4.5);
-    const dx = Math.cos(camYaw), dz = Math.sin(camYaw);
-    const back = clearDistance(px, pz, dx, dz, CAM_BACK, CAM_UP);
-    const k = back / CAM_BACK;
-    // In a tight street the camera comes in closer but stays up above the walls, looking down.
-    const want = new THREE.Vector3(px - dx * back, CAM_UP + (1 - k) * 0.6, pz - dz * back);
-    if (snap || k < 0.999) camPos.copy(want); else camPos.lerp(want, Math.min(1, dt * 10));
-    look.set(px + dx * 1.1, 0.75, pz + dz * 1.1);
+    if (snap) { camYaw = p.dir; orbitHold = 0; boom = 1; snapCamera = false; cancelOrbit(); }
+    const active = canLook();
+    if (active) orbitHold = Math.max(0, orbitHold - dt);
+    // WASD uses a stable camera basis: recentering while strafing would curl the movement path.
+    const cameraMove = ['w', 'a', 's', 'd'].some((key) => keys.has(key));
+    if (active && !cameraMove && orbitHold === 0 && orbitPointer === null && (p.moving || keys.has('arrowleft') || keys.has('arrowright') || stick.on)) {
+      camYaw += angDiff(camYaw, p.dir) * Traversal.damp(4.5, dt);
+    }
+    look.set(px, HEAD, pz);
+    desired.set(px - Math.cos(camYaw) * zoomBack, HEAD + Math.tan(pitch) * zoomBack, pz - Math.sin(camYaw) * zoomBack);
+    const safe = Traversal.cameraFraction(look, desired, cameraTop);
+    boom = snap || safe < boom ? safe : boom + (safe - boom) * Traversal.damp(4, dt);
+    desired.lerpVectors(look, desired, boom);
+    if (snap) camPos.copy(desired); else camPos.lerp(desired, Traversal.damp(14, dt));
+    // Check the smoothed position as well: smoothing can cut through a corner during an orbit.
+    const actual = Traversal.cameraFraction(look, camPos, cameraTop);
+    if (actual < 1) camPos.lerpVectors(look, camPos, actual);
     camera.position.copy(camPos);
-    camera.position.x += shakeX * S * 0.6;
-    camera.position.y += shakeY * S * 0.6;
     camera.lookAt(look);
+    const nearPlayer = camera.position.distanceTo(look) < 1.05;
+    const zay = figures.get(p);
+    if (zay) zay.visible = !nearPlayer; // only when trapped between ZAY and a wall
   }
 
   // ---------- Each frame ----------
@@ -907,13 +1102,15 @@ if (renderer) {
     frameNo++;
     const p = state.player;
     const t = state.time;
+    if (riverMaterial?.userData.shader) riverMaterial.userData.shader.uniforms.riverTime.value = t;
     const town = (DISTRICTS[state.district] || {}).look === 'town';
 
     // ZAY
     let zay = figures.get(p);
-    if (zay && zay.userData.town !== town) { scene.remove(zay); figures.delete(p); }
+    if (zay && zay.userData.town !== town) { releaseFigure(zay); figures.delete(p); }
     zay = figureFor(p, () => zayFigure(town));
     place(zay, p.x, p.y, p.dir, dt);
+    if (p.dashT > 0) { zay.userData.inner.rotation.z = -(1 - p.dashT / 0.17) * Math.PI * 2; zay.userData.inner.position.y = 0.25; }
     zay.userData.tail.rotation.y = Math.sin(t * 5 + p.step) * 0.5;
     zay.userData.ledger.visible = !!p.hasLedger;
     const faded = p.hidden || (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0);
@@ -988,7 +1185,7 @@ if (renderer) {
     for (let i = ri; i < ringPool.length; i++) ringPool[i].visible = false;
 
     // Remove figures for things that are gone (picked up, guards from another visit, finished effects).
-    for (const [obj, g] of figures) if (g.userData.seen !== frameNo) { scene.remove(g); figures.delete(obj); }
+    for (const [obj, g] of figures) if (g.userData.seen !== frameNo) { releaseFigure(g); figures.delete(obj); }
     for (const c of allCones) if (c.userData.seen !== frameNo) c.visible = false;
     for (const m of allMarks) if (m.userData.seen !== frameNo) m.visible = false;
 
@@ -1051,5 +1248,5 @@ if (renderer) {
     renderer.render(scene, camera);
   }
 
-  window.R3D = { ready: true, render, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
+  window.R3D = { ready: true, render, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
 }
