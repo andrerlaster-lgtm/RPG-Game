@@ -81,6 +81,8 @@ async function enterDistrict(id, spawn = 'start', { save = true } = {}) {
   state.player.x = at.x; state.player.y = at.y;
   // Arrive facing into the district (this is what the 3D camera looks along).
   state.player.dir = Math.atan2(H * TILE / 2 - at.y, W * TILE / 2 - at.x);
+  CAM3.yaw = state.player.dir; CAM3.manual = 0;
+  state.player.vx = state.player.vy = 0; state.player.z = 0;
   // Exits stay off until you've walked a little way from where you arrived, so holding the direction you
   // came in doesn't bounce you straight back through the door.
   state.exitLock = true;

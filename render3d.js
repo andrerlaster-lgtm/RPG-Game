@@ -32,6 +32,35 @@ if (renderer) {
   canvas.before(el);
   el.addEventListener('mousedown', (e) => { if (e.button === 2) pressed.add('mouse-card'); });
   el.addEventListener('contextmenu', (e) => e.preventDefault());
+  // Look around: drag on the picture (mouse or a finger) to swing the camera, wheel or pinch to zoom.
+  el.style.touchAction = 'none';
+  const drags = new Map();
+  let pinch = 0;
+  el.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    drags.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { el.setPointerCapture(e.pointerId); } catch { /* fine without capture */ }
+    pinch = 0;
+  });
+  el.addEventListener('pointermove', (e) => {
+    const d = drags.get(e.pointerId);
+    if (!d || state.mode !== 'field' || state.paused) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    d.x = e.clientX; d.y = e.clientY;
+    if (drags.size >= 2) {
+      const [a, b] = [...drags.values()], span = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinch) zoomCamera(pinch / Math.max(1, span));
+      pinch = span;
+      return;
+    }
+    const k = e.pointerType === 'mouse' ? 0.0052 : 0.0075;
+    orbitCamera(dx * k, dy * k * 0.8);
+  });
+  const dragEnd = (e) => { drags.delete(e.pointerId); pinch = 0; };
+  el.addEventListener('pointerup', dragEnd);
+  el.addEventListener('pointercancel', dragEnd);
+  el.addEventListener('lostpointercapture', dragEnd);
+  el.addEventListener('wheel', (e) => { e.preventDefault(); if (state.mode === 'field') zoomCamera(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
   renderer.setClearColor(0x07080f);
   // Colour handling. The tone mapper squeezes bright lamps and windows into the screen's range without washing out the
   // dark blues; Options keeps the choice in one place (LOOK) so it can be compared and tuned.
@@ -66,6 +95,7 @@ if (renderer) {
   const zayLight = new THREE.PointLight(0x8fa0d8, 2.2, 4.8, 1.5);
   scene.add(zayLight);
 
+  let baseFov = 60;
   const resize3d = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -80,7 +110,7 @@ if (renderer) {
     const extra = isTouch ? 0.17 * h : 0;
     const fullH = h + 2 * extra;
     camera.aspect = w / fullH;
-    camera.fov = 2 * Math.atan(Math.tan(vfov / 2) * fullH / h) * 180 / Math.PI;
+    camera.fov = baseFov = 2 * Math.atan(Math.tan(vfov / 2) * fullH / h) * 180 / Math.PI;
     if (extra) camera.setViewOffset(w, fullH, 0, 2 * extra, w, h); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   };
@@ -864,40 +894,63 @@ if (renderer) {
   const sparkGeo = new THREE.OctahedronGeometry(0.05);
 
   // ---------- Chase camera ----------
-  let camYaw = 0, snapCamera = true;
-  const camPos = new THREE.Vector3(), look = new THREE.Vector3();
-  const CAM_BACK = 3.7, CAM_UP = 2.9, HEAD = 0.95;
-  // How far back the camera can sit before a building gets in the way (walks the grid from ZAY's head).
-  function clearDistance(px, pz, dx, dz, back, up) {
-    const steps = 24;
+  // An orbit camera that follows ZAY. game.js owns where it should be (CAM3: yaw, pitch, dist); here it is
+  // smoothed, kept out of buildings, and nudged up over the rooftops when a street is too tight to sit behind him.
+  let snapCamera = true;
+  const camPos = new THREE.Vector3(), look = new THREE.Vector3(), focus = new THREE.Vector3();
+  const HEAD = 0.95;
+  let yawS = 0, pitchS = 0.5, distS = 4, liftS = 0, kickS = 0;
+  // How far along a ray from ZAY's head the camera can go before a building is in the way.
+  function clearDistance(px, py, pz, dx, dy, dz, want) {
+    const steps = Math.ceil(want / 0.16);
     for (let i = 1; i <= steps; i++) {
-      const t = (i / steps) * back;
-      const x = px - dx * t, z = pz - dz * t, y = HEAD + (up - HEAD) * (t / back);
+      const t = (i / steps) * want;
+      const x = px + dx * t, y = py + dy * t, z = pz + dz * t;
       const tx = Math.floor(x), tz = Math.floor(z);
       const out = tx < 0 || tz < 0 || tx >= W || tz >= H;
       const top = out ? WALL_H : TOPS[tz * W + tx] || (grid[tz][tx] === '#' ? WALL_H : 0);
-      if (top && y < top + 0.15) return Math.max(0.6, t - 0.3);
+      if (top && y < top + 0.12) return Math.max(0.5, t - 0.28);
     }
-    return back;
+    return want;
   }
+  const offsetFor = (yaw, pitch) => [-Math.cos(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.sin(yaw) * Math.cos(pitch)];
   function updateCamera3d(dt) {
     const p = state.player;
-    const px = p.x * S, pz = p.y * S;
-    const target = p.dir;
+    const px = p.x * S, pz = p.y * S, py = HEAD + (p.z || 0) * 0.6;
     const snap = snapCamera;
-    if (snapCamera) { camYaw = target; snapCamera = false; }
-    else camYaw += angDiff(camYaw, target) * Math.min(1, dt * 4.5);
-    const dx = Math.cos(camYaw), dz = Math.sin(camYaw);
-    const back = clearDistance(px, pz, dx, dz, CAM_BACK, CAM_UP);
-    const k = back / CAM_BACK;
-    // In a tight street the camera comes in closer but stays up above the walls, looking down.
-    const want = new THREE.Vector3(px - dx * back, CAM_UP + (1 - k) * 0.6, pz - dz * back);
-    if (snap || k < 0.999) camPos.copy(want); else camPos.lerp(want, Math.min(1, dt * 10));
-    look.set(px + dx * 1.1, 0.75, pz + dz * 1.1);
+    if (snap) { CAM3.yaw = p.dir; yawS = CAM3.yaw; pitchS = CAM3.pitch; distS = CAM3.dist; liftS = 0; focus.set(px, py, pz); snapCamera = false; }
+    const ease = (r) => 1 - Math.exp(-r * dt);
+    yawS += angDiff(yawS, CAM3.yaw) * ease(16);
+    pitchS += (CAM3.pitch - pitchS) * ease(16);
+    // Follow point: ZAY's head, a touch ahead of where he's running, eased so stops and starts don't jolt.
+    const lead = 0.16;
+    focus.x += (px + (p.vx || 0) * S * lead - focus.x) * ease(9);
+    focus.z += (pz + (p.vy || 0) * S * lead - focus.z) * ease(9);
+    focus.y += (py - focus.y) * ease(7);
+    // Blocked behind? Try looking from higher up before settling for a close-up.
+    let lift = 0, best = 0;
+    for (const extra of [0, 0.22, 0.44, 0.66, 0.88]) {
+      const pit = Math.min(1.35, pitchS + extra);
+      const [ox, oy, oz] = offsetFor(yawS, pit);
+      const c = clearDistance(focus.x, focus.y, focus.z, ox, oy, oz, CAM3.dist);
+      if (c > best + 0.05) { best = c; lift = pit - pitchS; }
+      if (c >= CAM3.dist * 0.8) break;
+    }
+    liftS += (lift - liftS) * ease(lift > liftS ? 7 : 2.2);
+    const [ox, oy, oz] = offsetFor(yawS, Math.min(1.35, pitchS + liftS));
+    const clear = clearDistance(focus.x, focus.y, focus.z, ox, oy, oz, CAM3.dist);
+    distS = clear < distS ? clear : distS + (clear - distS) * ease(3.5);   // in at once, back out gently
+    camPos.set(focus.x + ox * distS, focus.y + oy * distS, focus.z + oz * distS);
+    look.copy(focus); look.y -= 0.12;
     camera.position.copy(camPos);
     camera.position.x += shakeX * S * 0.6;
     camera.position.y += shakeY * S * 0.6;
     camera.lookAt(look);
+    // A little wider when sprinting.
+    const kick = p.sprint && (p.speedNow || 0) > 140 ? 1 : 0;
+    kickS += (kick - kickS) * ease(4);
+    const fov = baseFov * (1 + kickS * 0.07);
+    if (Math.abs(camera.fov - fov) > 0.02) { camera.fov = fov; camera.updateProjectionMatrix(); }
   }
 
   // ---------- Each frame ----------

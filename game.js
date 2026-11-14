@@ -314,13 +314,25 @@ window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 // Input map (like Godot's InputMap): gamepad buttons feed the same actions as keys.
 // Standard layout: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 9 Start, 12-15 d-pad.
 const PAD_MAP = {
-  field: { 0: 'e', 1: ' ', 2: 'q', 3: 'i', 4: 'shift', 5: 'shift', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
+  field: { 0: 'e', 1: ' ', 2: 'q', 3: 'i', 4: 'shift', 5: 'shift', 9: 'p', 10: 'f', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   inventory: { 0: 'enter', 1: 'escape', 3: 'i', 4: 'q', 5: 'e', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   dialog: { 0: 'enter', 1: 'enter', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   shop: { 0: 'enter', 1: 'escape', 4: 'q', 5: 'q', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' },
   battle: { 0: 'enter', 1: 'escape', 9: 'p', 12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright' }
 };
 const padHeld = new Set();
+const padStick = { x: 0, y: 0 };
+// The 3D chase camera (render3d.js draws from it). yaw: which way it looks along the ground, pitch: how far
+// above ZAY it sits (radians), dist: how far back. `manual` counts down after you move it yourself, so the
+// camera doesn't fight your hand by swinging back behind ZAY straight away.
+const CAM3 = { yaw: -Math.PI / 2, pitch: 0.5, dist: 4.3, manual: 0 };
+const CAM_LIMITS = { pitchMin: 0.14, pitchMax: 1.28, distMin: 2.2, distMax: 7.5 };
+function orbitCamera(dYaw, dPitch) {
+  CAM3.yaw += dYaw;
+  CAM3.pitch = Math.max(CAM_LIMITS.pitchMin, Math.min(CAM_LIMITS.pitchMax, CAM3.pitch + dPitch));
+  CAM3.manual = 2.5;
+}
+function zoomCamera(k) { CAM3.dist = Math.max(CAM_LIMITS.distMin, Math.min(CAM_LIMITS.distMax, CAM3.dist * k)); }
 function pollGamepad() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   const pad = Array.from(pads || []).find((g) => g && g.connected);
@@ -328,13 +340,22 @@ function pollGamepad() {
   if (pad) {
     const map = PAD_MAP[state.mode] || PAD_MAP.field;
     pad.buttons.forEach((b, i) => { if (b.pressed && map[i]) now.add(map[i]); });
-    const [ax = 0, ay = 0] = pad.axes;
-    const dead = 0.45;
-    if (ax < -dead) now.add('arrowleft');
-    if (ax > dead) now.add('arrowright');
-    if (ay < -dead) now.add('arrowup');
-    if (ay > dead) now.add('arrowdown');
-  }
+    const [ax = 0, ay = 0, rx = 0, ry = 0] = pad.axes;
+    const field = state.mode === 'field';
+    // In the field the left stick is analog (push a little to creep, all the way to walk) and the right
+    // stick swings the camera. In menus the left stick still acts like the d-pad.
+    padStick.x = field ? ax : 0; padStick.y = field ? ay : 0;
+    if (field) {
+      if (Math.abs(rx) > 0.18) orbitCamera(rx * 0.045, 0);
+      if (Math.abs(ry) > 0.18) orbitCamera(0, ry * 0.03);
+    } else {
+      const dead = 0.45;
+      if (ax < -dead) now.add('arrowleft');
+      if (ax > dead) now.add('arrowright');
+      if (ay < -dead) now.add('arrowup');
+      if (ay > dead) now.add('arrowdown');
+    }
+  } else padStick.x = padStick.y = 0;
   for (const k of now) if (!padHeld.has(k)) { pressed.add(k); keys.add(k); }
   for (const k of padHeld) if (!now.has(k)) keys.delete(k);
   padHeld.clear();
@@ -428,7 +449,13 @@ function lineOfSight(ax, ay, bx, by) {
 function collides(e) {
   const x0 = Math.floor((e.x - e.r) / TILE), x1 = Math.floor((e.x + e.r) / TILE);
   const y0 = Math.floor((e.y - e.r) / TILE), y1 = Math.floor((e.y + e.r) / TILE);
-  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (isSolidAt(tx, ty)) return true;
+  // A round body against square tiles: only count a tile if the circle really overlaps it, so ZAY slips
+  // round corners instead of catching on them.
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+    if (!isSolidAt(tx, ty)) continue;
+    const nx = Math.max(tx * TILE, Math.min(e.x, tx * TILE + TILE)), ny = Math.max(ty * TILE, Math.min(e.y, ty * TILE + TILE));
+    if ((e.x - nx) * (e.x - nx) + (e.y - ny) * (e.y - ny) < e.r * e.r) return true;
+  }
   // People stand their ground.
   if (state && state.npcs) for (const n of state.npcs) if (Math.hypot(n.x - e.x, n.y - e.y) < e.r + 9) return true;
   return false;
@@ -492,56 +519,88 @@ function noise(x, y, radius) {
 // ---------- Player ----------
 // The 3D view (render3d.js) takes over drawing the field once WebGL is up, unless Options says Classic.
 const use3D = () => SETTINGS.view === '3d' && !!window.R3D && window.R3D.ready;
-const TURN_RATE = 3;   // radians a second, turning in the 3D view
+const WALK_SPEED = 118, SPRINT_SPEED = 185;
+const JUMP_V = 3.4, GRAVITY = 11;   // tiles a second (the 3D view lifts ZAY by p.z; the rules don't change in the air)
 function updatePlayer(dt) {
   const p = state.player;
+  const three = use3D();
   let mx = 0, my = 0;
   const wheel = stick.on && Math.hypot(stick.x, stick.y) > 0.15;
-  if (use3D()) {
-    // Third person: Left/Right turn ZAY, Up walks forward, Down steps back.
-    // The wheel works the same way: push up to walk, sideways to turn, both to walk round a corner.
-    const turn = wheel ? Math.sign(stick.x) * Math.max(0, Math.abs(stick.x) - 0.15) / 0.85
-      : (keys.has('arrowright') ? 1 : 0) - (keys.has('arrowleft') ? 1 : 0);
-    p.dir += turn * TURN_RATE * dt;
-    const fwd = wheel ? (stick.y < 0 ? -stick.y : -stick.y * 0.6) * (Math.abs(stick.y) > 0.2 ? 1 : 0)
-      : (keys.has('arrowup') ? 1 : 0) - (keys.has('arrowdown') ? 0.6 : 0);
-    mx = Math.cos(p.dir) * fwd;
-    my = Math.sin(p.dir) * fwd;
-  } else if (wheel) {
-    mx = stick.x; my = stick.y;
-  } else {
-    if (keys.has('arrowup')) my -= 1;
-    if (keys.has('arrowdown')) my += 1;
-    if (keys.has('arrowleft')) mx -= 1;
-    if (keys.has('arrowright')) mx += 1;
+  const pad = Math.hypot(padStick.x, padStick.y) > 0.2;
+  // What the hands are asking for: ix = right, iy = forward (or screen-right / screen-up in Classic).
+  let ix = 0, iy = 0;
+  if (wheel) { ix = stick.x; iy = -stick.y; }
+  else if (pad) { ix = padStick.x; iy = -padStick.y; }
+  else {
+    ix = (keys.has('arrowright') || (three && keys.has('d')) ? 1 : 0) - (keys.has('arrowleft') || (three && keys.has('a')) ? 1 : 0);
+    iy = (keys.has('arrowup') || (three && keys.has('w')) ? 1 : 0) - (keys.has('arrowdown') || (three && keys.has('s')) ? 1 : 0);
   }
+  if (three) {
+    // Third person: you push the way you want to go on screen, and ZAY turns to run that way.
+    // Pushing sideways also swings the camera round behind him, unless you just moved the camera yourself.
+    CAM3.manual = Math.max(0, CAM3.manual - dt);
+    if (CAM3.manual <= 0 && Math.abs(ix) > 0.15) CAM3.yaw += ix * (iy < -0.3 ? 0.9 : 1.5) * dt;
+    const c = Math.cos(CAM3.yaw), sn = Math.sin(CAM3.yaw);
+    mx = c * iy - sn * ix;
+    my = sn * iy + c * ix;
+  } else { mx = ix; my = -iy; }
   const mag = Math.hypot(mx, my);
   p.moving = mag > 0.15;
   if (mag > 1) { mx /= mag; my /= mag; }
-  if (p.moving && !use3D()) p.dir = Math.atan2(my, mx);
-  if (!isTouch && mouse.has && !p.moving && !use3D()) {
+  if (p.moving) {
+    const want = Math.atan2(my, mx);
+    // In 3D he turns smoothly (fast enough to feel instant on a tap); Classic snaps as before.
+    if (three) { const d = angDiff(p.dir, want); p.dir += Math.sign(d) * Math.min(Math.abs(d), 13 * dt); }
+    else p.dir = want;
+  }
+  if (!isTouch && mouse.has && !p.moving && !three) {
     // Face the cursor when standing still so card throws aim naturally.
     p.dir = Math.atan2(mouse.wy - p.y, mouse.wx - p.x);
   }
 
   p.sprint = keys.has('shift');
   const inHedge = tileAt(p.x, p.y) === 'h';
-  let speed = p.sprint ? 185 : 118;
+  let speed = p.sprint ? SPRINT_SPEED : WALK_SPEED;
   if (inHedge) speed *= 0.6;
 
   p.dashCd -= dt; p.slashCd -= dt; p.invuln -= dt; p.slashT -= dt;
-  if ((pressed.has(' ') || pressed.has('touch-dash')) && p.dashCd <= 0) {
+  if ((pressed.has(' ') || pressed.has('touch-dash')) && p.dashCd <= 0 && !(p.z > 0)) {
+    if (p.moving) p.dir = Math.atan2(my, mx);   // roll the way you're pushing
     p.dashT = 0.17; p.dashCd = 0.8; p.invuln = Math.max(p.invuln, 0.2);
+    p.rollT = 0.42;                              // how long the tumble is drawn for
     play('cloth2', { vol: 0.7 }); play('swish');
   }
+  p.rollT = Math.max(0, (p.rollT || 0) - dt);
+  // A short hop (F, or click the left stick). It's for feel: walls, guards and noise work the same.
+  if ((pressed.has('f') || pressed.has('touch-jump')) && three && !(p.z > 0) && p.dashT <= 0) { p.vz = JUMP_V; p.z = 0.001; play('cloth', { vol: 0.5 }); }
+  if (p.z > 0) {
+    p.vz -= GRAVITY * dt; p.z += p.vz * dt;
+    if (p.z <= 0) { p.z = 0; p.vz = 0; p.landT = 0.18; if (!inHedge) playStep(true); }
+  }
+  p.landT = Math.max(0, (p.landT || 0) - dt);
+  const ox = p.x, oy = p.y;
   if (p.dashT > 0) {
     p.dashT -= dt;
     move(p, Math.cos(p.dir) * 520 * dt, Math.sin(p.dir) * 520 * dt);
+    p.vx = Math.cos(p.dir) * speed; p.vy = Math.sin(p.dir) * speed;
+  } else if (three) {
+    // Ease up to speed and back down again, so starting and stopping have a little weight.
+    const k = Math.min(1, (p.moving ? 11 : 15) * dt);
+    p.vx = (p.vx || 0) + (mx * speed - (p.vx || 0)) * k;
+    p.vy = (p.vy || 0) + (my * speed - (p.vy || 0)) * k;
+    if (!p.moving && Math.hypot(p.vx, p.vy) < 4) p.vx = p.vy = 0;
+    if (p.vx || p.vy) move(p, p.vx * dt, p.vy * dt);
+    // Walking into a wall kills the speed going into it, and keeps the slide along it.
+    if (dt > 0) { p.vx = (p.x - ox) / dt; p.vy = (p.y - oy) / dt; }
   } else if (p.moving) {
     move(p, mx * speed * dt, my * speed * dt);
+    p.vx = mx * speed; p.vy = my * speed;
+  } else p.vx = p.vy = 0;
+  p.speedNow = dt > 0 ? Math.hypot(p.x - ox, p.y - oy) / dt : 0;
+  if (p.moving && p.dashT <= 0) {
     p.step += dt * (p.sprint ? 14 : 9);
     p.stepT = (p.stepT || 0) - dt;
-    if (p.stepT <= 0) {
+    if (p.stepT <= 0 && !(p.z > 0)) {
       if (inHedge) play('rustle'); else playStep(p.sprint);
       p.stepT = p.sprint ? 0.27 : 0.4;
     }
@@ -679,7 +738,8 @@ function throwCard(aimAtMouse) {
   const p = state.player;
   if (p.cards <= 0) { toast('Out of cards.', 1000); return; }
   p.cards -= 1;
-  const a = aimAtMouse && !use3D() ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : p.dir;
+  const a = aimAtMouse && !use3D() ? Math.atan2(mouse.wy - p.y, mouse.wx - p.x) : use3D() && !p.moving ? (p.dir = CAM3.yaw) : p.dir;
+  p.throwT = 0.3;
   state.projectiles.push({ x: p.x, y: p.y, vx: Math.cos(a) * 430, vy: Math.sin(a) * 430, life: 0.62, spin: 0 });
   play('card');
 }
