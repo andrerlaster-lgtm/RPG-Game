@@ -239,8 +239,9 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `render3d.js` — the third-person 3D view (Three.js)
 - `light3d.js` — the 3D night look: generated cobble, glow, shadow and mist textures
 - `world-art3d.js` — generated plaster/wetness, sky/environment lighting, instanced facade and foliage detail
-- `hero3d.js` — replaceable ZAY asset configuration and animation controller
-- `models/zay/` — KayKit CC0 temporary rogue GLB and original license
+- `hero-config.js` — replaceable ZAY model path, orientation and semantic animation mappings
+- `hero3d.js` — reusable ZAY loading, normalization and animation controller
+- `models/zay/` — current Shadow rogue, previous prototypes, and their separate license notices
 - `vendor/three/` — Three.js r169 (MIT), plus its GLTF loader in `addons/`
 - `models/props.glb` — CC0 market stalls, stools and kegs (Polygonal Mind)
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)
@@ -264,6 +265,8 @@ The suite starts its own localhost server and writes screenshots/results under `
 
 The owner merges the reviewed branch. Pushing to `main` on `andrerlaster-lgtm/RPG-Game` deploys this game to the `bellemorne-rogue-game` Vercel project. Keep every deployment login-protected. Follow `AGENTS.md`: do not run manual deploy/promote/alias commands, publish preview links, or change project protection settings. Check the result in the private LasterLab studio under Deploy Check after a merge.
 
-## ZAY 3D mock
+## ZAY character review
 
-The current review branch uses an actual custom skinned prototype based on MPFB's CC0 anatomy, with pointed ears, locs, a split coat and animated tail. It replaces the temporary KayKit visual via `hero3d.js`, while retaining the existing gameplay systems. Materials, bone diagnostic names and origin alignment are configurable. This is a rough model/animation prototype; see `docs/graphics/zay-3d-mock.md` for validation, provenance and remaining art work. Automatic deployment is disabled for `feat/zay-3d-mock`.
+The current development branch replaces the plain MPFB prototype with a detailed, rigged third-party Shadow rogue: layered leather/cloth gear, sculpted face, hood/hair, straps, buckles and reinforced boots. Its supplied PBR textures are repaired and optimized, locomotion/actions blend through the reusable controller, and high quality adds a small moving shadow. The source is AI-assisted and uses a custom game-use license, not CC0.
+
+See `docs/graphics/zay-shadow-rogue.md` for provenance, license terms, reproduction, replacement instructions and remaining limitations. Serve the repository locally and open `tools/zay-review.html` for the real mesh's before/after comparison and animation review. The previous MPFB and KayKit assets remain available. ZAY's established identity and gameplay are unchanged. Automatic deployment is disabled for `feat/zay-authored-character`; the owner reviews and merges.

@@ -4,7 +4,8 @@
     "deploymentEnabled": {
       "feat/third-person-polish": false,
       "feat/major-graphics-overhaul": false,
-      "feat/zay-3d-mock": false
+      "feat/zay-3d-mock": false,
+      "feat/zay-authored-character": false
     }
   }
 }
