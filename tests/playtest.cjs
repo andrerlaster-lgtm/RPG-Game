@@ -39,15 +39,33 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
       assert.ok(await page.locator('#game3d').isVisible());
       assert.equal(await page.evaluate(()=>state.district),'lantern');return await page.evaluate(()=>R3D.debug());
     });
+    await record('replacement has working PBR texture maps and no false glow',async()=>{
+      const hero=await page.evaluate(()=>R3D.hero());
+      assert.equal(hero.url,'models/zay/shadow-rogue.glb');
+      assert.ok(hero.materials.length>0);
+      assert.ok(hero.materials.every(m=>m.base&&m.normal&&m.roughness&&m.metalness&&!m.emissive));
+      return hero.materials;
+    });
+    await record('moving character is excluded from cached moon shadows',async()=>{
+      const result=await page.evaluate(()=>{
+        const moon=R3D.scene.children.find(o=>o.isDirectionalLight&&o.castShadow);
+        const group=R3D.scene.children.find(o=>o.userData.rig),meshes=[];
+        const count={moon:0,moving:0};
+        group.traverse(o=>{if(o.isSkinnedMesh){meshes.push([o,o.onBeforeShadow]);o.onBeforeShadow=(renderer,obj,camera,shadowCamera)=>{count[shadowCamera===moon.shadow.camera?'moon':'moving']++;};}});
+        try {moon.shadow.needsUpdate=true;R3D.render(0);R3D.render(0);return {...count,restored:meshes.every(([o])=>o.castShadow)};}
+        finally {for(const [o,fn] of meshes)o.onBeforeShadow=fn;}
+      });
+      assert.equal(result.moon,0);assert.ok(result.moving>0);assert.equal(result.restored,true);return result;
+    });
     await page.screenshot({path:path.join(artifacts,'lantern.png')});
     await record('WASD movement, braking and animated limbs',async()=>{
       const before=await page.evaluate(()=>({x:state.player.x,y:state.player.y}));
       await page.keyboard.down('w');await page.waitForTimeout(450);
-      const moving=await page.evaluate(()=>({x:state.player.x,y:state.player.y,v:Math.hypot(state.player.vx,state.player.vy),stride:R3D.scene.children.find(g=>g.userData.town!==undefined)?.userData.stride,clip:R3D.hero().clip}));
+      const moving=await page.evaluate(()=>({x:state.player.x,y:state.player.y,v:Math.hypot(state.player.vx,state.player.vy),stride:R3D.scene.children.find(g=>g.userData.town!==undefined)?.userData.stride,role:R3D.hero().role}));
       await page.keyboard.up('w');await page.waitForTimeout(200);
       assert.ok(Math.hypot(moving.x-before.x,moving.y-before.y)>8);
       assert.ok(moving.v>50);assert.ok(moving.stride>0.2);
-      assert.equal(moving.clip,'Walking_A');
+      assert.equal(moving.role,'walk');
       assert.equal(await page.evaluate(()=>Math.hypot(state.player.vx,state.player.vy)),0);return moving;
     });
     await record('rigged locomotion blends, bones animate, and actions remain in place',async()=>{
@@ -64,12 +82,13 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
         rig.reset();state.paused=false;
         return {idle,blend,walk,run,dodge,landed,attack,repeat,recovered};
       });
-      assert.equal(rig.idle.clip,'Idle');assert.equal(rig.walk.clip,'Walking_A');assert.equal(rig.run.clip,'Running_A');
+      assert.equal(rig.idle.role,'idle');assert.equal(rig.walk.role,'walk');assert.equal(rig.run.role,'run');
       assert.ok(rig.blend.weights.idle>0&&rig.blend.weights.idle<1);assert.ok(rig.blend.weights.walk>0&&rig.blend.weights.walk<1);
-      assert.notDeepEqual(rig.walk.leg,rig.blend.leg);assert.equal(rig.dodge.clip,'Dodge_Forward');
+      assert.notDeepEqual(rig.walk.leg,rig.blend.leg);assert.equal(rig.dodge.role,'dodge');
       assert.ok(Math.abs(rig.dodge.root[0]-rig.idle.root[0])<1e-5&&Math.abs(rig.dodge.root[2]-rig.idle.root[2])<1e-5);
-      assert.equal(rig.landed.clip,'Idle');assert.equal(rig.attack.clip,'Dualwield_Melee_Attack_Slice');
-      assert.equal(rig.repeat.time,0);assert.equal(rig.recovered.clip,'Idle');return {blend:rig.blend.weights,roles:rig.idle.clips};
+      assert.ok(Math.abs(rig.run.root[0]-rig.idle.root[0])<1e-5&&Math.abs(rig.run.root[2]-rig.idle.root[2])<1e-5);
+      assert.equal(rig.landed.role,'idle');assert.equal(rig.attack.role,'attack');
+      assert.equal(rig.repeat.time,0);assert.equal(rig.recovered.role,'idle');return {blend:rig.blend.weights,roles:rig.idle.clips};
     });
     await record('orbit, zoom, recenter, and right-click card',async()=>{
       const before=await page.evaluate(()=>R3D.debug());
@@ -81,7 +100,7 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
       const cards=await page.evaluate(()=>state.player.cards);
       await page.mouse.click(700,450,{button:'right'});await page.waitForTimeout(100);
       assert.equal(await page.evaluate(()=>state.player.cards),cards-1);
-      assert.equal(await page.evaluate(()=>R3D.hero().clip),'Throw');
+      assert.equal(await page.evaluate(()=>R3D.hero().role),'throw');
     });
     await record('legacy arrows, sprint, roll, collision, and blocked footsteps',async()=>{
       // Deterministic fixtures exercise the actual updatePlayer and move functions on a real map.
@@ -95,7 +114,7 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
         if(!(ran>walked+15))throw Error('sprint did not exceed walk');
         resetTraversal();p.x=912;p.y=522;p.dir=Math.PI;p.dashCd=0;pressed.add(' ');updatePlayer(1/60);pressed.clear();
         if(!(p.dashT>0&&p.invuln>0))throw Error('roll did not start');
-        R3D.render(1/60);if(R3D.hero().clip!=='Dodge_Forward')throw Error('roll animation did not start');
+        R3D.render(1/60);if(R3D.hero().role!=='dodge')throw Error('roll animation did not start');
         // Find a clear street immediately east of a wall, away from NPCs.
         let spot;
         for(let y=1;y<H-1&&!spot;y++)for(let x=1;x<W-1;x++)if(grid[y][x]==='.'&&grid[y][x-1]==='#'&&!FURN.has(y*W+x)){
@@ -152,9 +171,11 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
       await page.keyboard.press('Escape');await page.click('#pause-options');
       const snapshot=()=>page.evaluate(()=>({x:state.player.x,y:state.player.y,hp:state.player.hp,cards:state.player.cards,district:state.district,grid:JSON.stringify(grid)}));
       const before=await snapshot();
+      assert.ok(await page.evaluate(()=>R3D.scene.children.some(o=>o.isSpotLight&&o.castShadow&&o.shadow.map&&o.shadow.mapSize.x===512)));
       for(const lighting of ['night','dusk','day'])await page.click(`[data-lighting="${lighting}"]`);
       await page.click('[data-quality="low"]');await page.waitForFunction(()=>R3D.debug().lighting==='day'&&R3D.debug().quality==='low');
       const warm=await page.evaluate(()=>R3D.debug());
+      assert.ok(await page.evaluate(()=>R3D.scene.children.filter(o=>o.isSpotLight).every(o=>!o.castShadow)));
       assert.ok(await page.evaluate(()=>R3D.scene.children.filter(o=>o.isPointLight&&o.visible&&o.intensity>0).length<=4));
       for(const lighting of ['night','dusk','day','night','dusk','day']){await page.click(`[data-lighting="${lighting}"]`);await page.waitForTimeout(60);}
       const reused=await page.evaluate(()=>R3D.debug());assert.equal(reused.textures,warm.textures);assert.deepEqual(await snapshot(),before);
@@ -217,7 +238,7 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
     });
     await record('unavailable ZAY asset retains a playable procedural fallback',async()=>{
       const fallback=await browser.newContext({viewport:{width:800,height:600}});
-      await fallback.route('**/models/zay/rogue.glb',route=>route.fulfill({status:404,body:'Deliberately unavailable test asset'}));
+      await fallback.route('**/models/zay/shadow-rogue.glb',route=>route.fulfill({status:404,body:'Deliberately unavailable test asset'}));
       const p=await fallback.newPage(),runtime=[];p.on('pageerror',e=>runtime.push(e.message));
       await p.goto(url);await p.waitForFunction(()=>window.R3D&&LEVEL&&R3D.hero().error);
       await p.click('#start');await p.waitForTimeout(500);await p.evaluate(()=>closeDialog());

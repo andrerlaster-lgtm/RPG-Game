@@ -6,10 +6,12 @@
 //
 // Scale: one map tile (32 px) is one unit. The map's x runs along x, its y along z, and up is y.
 // A figure faces +x, so a game direction `dir` is rotation.y = -dir.
-// ZAY uses a replaceable CC0 rig; named NPCs retain their established procedural figures.
+// ZAY uses a replaceable licensed rig; named NPCs retain their established procedural figures.
 
 import { makePlaster, makeWetness, createAtmosphere, addFacadeArt } from './world-art3d.js';
 import { loadHero } from './hero3d.js';
+import { makeStreetLife } from './streetlife3d.js';
+import { makePost } from './post3d.js';
 import * as THREE from './vendor/three/three.module.min.js';
 import { mergeGeometries } from './vendor/three/addons/BufferGeometryUtils.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
@@ -54,22 +56,34 @@ if (renderer) {
   const moon = new THREE.DirectionalLight(0x86a0e0, 0.85);
   moon.position.set(-6, 14, -4);
   scene.add(moon, moon.target);
-  // Static moon shadows are refreshed only when a district is rebuilt. Moving people retain
-  // the lantern-aware contact shadows, avoiding six extra shadow renders on every frame.
+  // Cache the district moon map; only the small character spotlight updates each frame.
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.autoUpdate = true;
+  moon.shadow.autoUpdate = false;
   moon.castShadow = true;
   moon.shadow.mapSize.setScalar(isTouch ? 1024 : 2048);
   moon.shadow.bias = -0.0004;
   moon.shadow.normalBias = 0.025;
   const atmosphere = createAtmosphere(renderer, scene, hemi, moon);
+  // Graphics: Low, High, or Auto (High until this device shows it can't keep up, then Low for the session).
+  let autoLow = false, slowFor = 0, lastNow = 0;
+  const gfxLow = () => SETTINGS.quality === 'low' || (SETTINGS.quality === 'auto' && autoLow);
+  // Bloom and a gentle colour grade (post3d.js), on High only.
+  const post = makePost(renderer, scene, camera);
+  renderer.info.autoReset = false;   // count the whole frame, not just the last pass (R3D.debug)
+  const STREET = makeStreetLife({ wallH: WALL_H });
+  let streetLife = null;
   let mood = null, indoorScene = false, graphicsKey = '', facadeDetail = null;
   function applyGraphics() {
     mood = atmosphere.apply(SETTINGS.lighting || 'night', indoorScene);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SETTINGS.quality === 'low' ? 1 : 1.5));
-    renderer.shadowMap.enabled = SETTINGS.quality !== 'low';
-    graphicsKey = SETTINGS.lighting + SETTINGS.quality;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, gfxLow() ? 1 : 1.5));
+    renderer.shadowMap.enabled = !gfxLow();
+    post.set(!gfxLow());
+    post.resize(window.innerWidth, window.innerHeight, renderer.getPixelRatio());
+    zayLight.castShadow = renderer.shadowMap.enabled;
+    moon.shadow.needsUpdate = true;
+    graphicsKey = SETTINGS.lighting + gfxLow();
   }
 
   // Street lamps light the scene; only the ones nearest ZAY get a real light (phones can't afford all).
@@ -79,12 +93,17 @@ if (renderer) {
     scene.add(l);
     LIGHTS.push(l);
   }
-  // ZAY's own faint glow so he never disappears into the dark.
-  const zayLight = new THREE.PointLight(0x8fa0d8, 2.2, 4.8, 1.5);
-  scene.add(zayLight);
+  // A soft key light makes the face and leather readable without making the mesh emissive.
+  // Its tight 512px shadow frustum follows ZAY; low quality keeps the contact shadow only.
+  const zayLight = new THREE.SpotLight(0xe3d6c4, 13, 8, Math.PI / 7, 0.65, 2);
+  zayLight.castShadow = true;
+  zayLight.shadow.mapSize.set(512, 512);
+  zayLight.shadow.camera.near = 0.2; zayLight.shadow.camera.far = 8;
+  zayLight.shadow.bias = -0.0003; zayLight.shadow.normalBias = 0.012;
+  scene.add(zayLight, zayLight.target);
 
   const resize3d = () => {
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SETTINGS.quality === 'low' ? 1 : 1.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, gfxLow() ? 1 : 1.5));
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     el.style.width = window.innerWidth + 'px';
     el.style.height = window.innerHeight + 'px';
@@ -100,6 +119,7 @@ if (renderer) {
     camera.fov = 2 * Math.atan(Math.tan(vfov / 2) * fullH / h) * 180 / Math.PI;
     if (extra) camera.setViewOffset(w, fullH, 0, 2 * extra, w, h); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
+    post.resize(w, h, renderer.getPixelRatio());
   };
   window.addEventListener('resize', resize3d);
   resize3d();
@@ -346,6 +366,8 @@ if (renderer) {
     }
     buildStreetDetail(indoors);
     facadeDetail = !indoors ? addFacadeArt({world, edges: EDGES, grid, W, H, S, estate: state.district === 'crown-estate'}) : null;
+    streetLife = STREET.build(world, { grid, W, H, TILE, EDGES, TREES, indoors, estate: state.district === 'crown-estate', shadows: true,
+      town: indoors || state.district === 'crown-estate' ? 0 : state.district === 'lantern' ? 1 : 0.5 });
 
     // Windows on street-facing walls: warm lit panes or dark shutters.
     const lit = [], shut = [];
@@ -358,7 +380,7 @@ if (renderer) {
     const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
     const warm = new THREE.Color();
     for (const [list, mat] of [[lit, paneMat], [shut, lambert(0x3a2618)]]) {
-      if (!list.length) continue;
+      if (!list.length || indoors) continue;   // a room's own walls have no street windows
       const isLit = list === lit;
       const im = new THREE.InstancedMesh(pane, mat, list.length * 2);
       // Lit windows also get a soft glow around the glass and a pool of light on the street in front of them.
@@ -513,7 +535,7 @@ if (renderer) {
     moon.target.position.set(W / 2, 0, H / 2);
     Object.assign(moon.shadow.camera, { left: -span * 0.75, right: span * 0.75, top: span * 0.75, bottom: -span * 0.75, near: 0.5, far: span * 3 });
     moon.shadow.camera.updateProjectionMatrix();
-    renderer.shadowMap.needsUpdate = true;
+    moon.shadow.needsUpdate = true;
     scene.add(world);
     for (const [obj, g] of figures) { releaseFigure(g); figures.delete(obj); delete obj.__cone; delete obj.__mark; }
     // Cones and marks belong to the last visit's guards.
@@ -1052,7 +1074,7 @@ if (renderer) {
 
   // ---------- Orbit / chase camera ----------
   let camYaw = 0, snapCamera = true, orbitHold = 0, orbitPointer = null;
-  let zoomBack = 3.7, pitch = 0.57, boom = 1;
+  let zoomBack = 3.7, pitch = 0.57, boom = 1, alertS = 0;
   const camPos = new THREE.Vector3(), look = new THREE.Vector3(), desired = new THREE.Vector3();
   const HEAD = 0.85;
   const canLook = () => use3D() && state.running && state.mode === 'field' && !state.paused && !state.over;
@@ -1129,7 +1151,7 @@ if (renderer) {
   function render(dt) {
     if (!LEVEL) return;
     if (builtFor !== LEVEL) build();
-    if (graphicsKey !== SETTINGS.lighting + SETTINGS.quality) applyGraphics();
+    if (graphicsKey !== SETTINGS.lighting + gfxLow()) applyGraphics();
     frameNo++;
     const p = state.player;
     const t = state.time;
@@ -1146,7 +1168,8 @@ if (renderer) {
     zay.userData.ledger.visible = !!p.hasLedger;
     const faded = p.hidden || (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0);
     zay.traverse((o) => { if (o.isMesh && o.material && !o.material.isMeshBasicMaterial) { if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = true; } o.material.transparent = faded; o.material.opacity = faded ? 0.5 : 1; } });
-    zayLight.position.set(p.x * S, 1.3, p.y * S);
+    zayLight.position.set(p.x * S + 1.7, 3.6, p.y * S + 1.5);
+    zayLight.target.position.set(p.x * S, 0.7, p.y * S);
 
     // Guards
     for (const g of state.guards) {
@@ -1267,22 +1290,37 @@ if (renderer) {
       if (!l) { L.intensity = 0; return; }
       L.position.set(l.x * S, 1.9, l.y * S);
       L.distance = l.r * S * 1.6;
-      L.visible = SETTINGS.quality !== 'low' || i < 3;
+      L.visible = !gfxLow() || i < 3;
       L.intensity = 7 * flick * (mood?.lamps ?? 1);
     });
     POOL_MAT.opacity = POOL_BASE * flick * (mood?.lamps ?? 1); HALO_MAT.opacity = HALO_BASE * flick * (mood?.lamps ?? 1);
     for (const m of MIST) {
-      m.sp.visible = SETTINGS.quality !== 'low' && SETTINGS.lighting !== 'day' && Math.hypot(m.x - camera.position.x, m.z - camera.position.z) < 14;
+      m.sp.visible = !gfxLow() && SETTINGS.lighting !== 'day' && Math.hypot(m.x - camera.position.x, m.z - camera.position.z) < 14;
       m.sp.position.set(m.x + Math.sin(t * 0.15 + m.ph) * 0.9, 0.75 + Math.sin(t * 0.2 + m.ph * 2) * 0.1, m.z + Math.cos(t * 0.12 + m.ph) * 0.6);
     }
 
     updateCamera3d(dt);
     if (facadeDetail) for (const batch of facadeDetail.children) {
       const sphere = batch.boundingSphere;
-      batch.visible = camera.position.distanceTo(sphere.center) < sphere.radius + (SETTINGS.quality === 'low' ? 8 : 18);
+      batch.visible = camera.position.distanceTo(sphere.center) < sphere.radius + (gfxLow() ? 8 : 18);
     }
-    renderer.render(scene, camera);
+    // Never bake a moving character into the cached moon map. The small moving
+    // spotlight resumes casting him on the next frame after a cache refresh.
+    const refreshMoon = renderer.shadowMap.enabled && moon.shadow.needsUpdate;
+    if (refreshMoon) heroRig?.setShadowCaster(false);
+    STREET.tick(t, renderer.getPixelRatio() * (window.innerHeight / 720));
+    if (streetLife) for (const o of streetLife.children) if (o.isInstancedMesh && o.boundingSphere) o.visible = camera.position.distanceTo(o.boundingSphere.center) < o.boundingSphere.radius + (gfxLow() ? 10 : 22);
+    renderer.info.reset();
+    try { if (post.on) post.render(dt, { alert: alertS }); else renderer.render(scene, camera); }
+    finally { if (refreshMoon) heroRig?.setShadowCaster(true); }
+    alertS += ((state.guards.some((g) => g.state === 'alert') ? 1 : 0) - alertS) * Math.min(1, dt * 3);
+    // Auto: about 4 seconds below ~25 frames a second drops to Low for the rest of the session.
+    const now = performance.now(), ms = now - lastNow; lastNow = now;
+    if (SETTINGS.quality === 'auto' && !autoLow && ms < 2500 && !document.hidden) {   // longer gaps are a hidden tab or a load, not slowness
+      slowFor = ms > 40 ? slowFor + ms : Math.max(0, slowFor - ms * 2);
+      if (slowFor > 4000) { autoLow = true; if (typeof renderOptions === 'function' && !document.getElementById('options').hidden) renderOptions(); }
+    }
   }
 
-  window.R3D = { ready: true, render, playHero: role => heroRig?.play(role), hero: () => heroRig?.debug() || { loaded: false, error: heroError }, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ lighting: atmosphere.current, quality: renderer.shadowMap.enabled ? 'high' : 'low', calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
+  window.R3D = { ready: true, render, get autoLow() { return autoLow; }, playHero: role => heroRig?.play(role), hero: () => heroRig?.debug() || { loaded: false, error: heroError }, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ post: post.on, lighting: atmosphere.current, quality: renderer.shadowMap.enabled ? 'high' : 'low', calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
 }

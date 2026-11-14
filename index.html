@@ -19,6 +19,7 @@
   <script src="ui.js" defer></script>
   <script src="traversal.js" defer></script>
   <script src="game.js" defer></script>
+  <script src="minimap.js" defer></script>
   <script src="battle.js" defer></script>
   <script src="inventory.js" defer></script>
   <script src="audio.js" defer></script>
@@ -42,7 +43,9 @@
       </div>
     </div>
     <p id="objective" class="objective"></p>
+    <canvas id="minimap" class="minimap" width="148" height="148" aria-hidden="true" hidden></canvas>
   </div>
+  <div id="banner" class="banner" role="status" hidden><span class="banner-title"></span><span class="banner-sub"></span></div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <div id="fade" class="fade" aria-hidden="true"></div>
 
@@ -170,8 +173,9 @@
         </span>
       </div>
       <div class="setting">
-        <span class="setting-label"><b>Graphics quality</b><small>Low reduces shadows, lights and resolution</small></span>
+        <span class="setting-label"><b>Graphics quality</b><small>Low reduces shadows, glow, lights and resolution. Auto starts on High and drops to Low if this device is slow.</small></span>
         <span class="segmented" role="radiogroup" aria-label="Graphics quality">
+          <button type="button" role="radio" data-quality="auto">Auto</button>
           <button type="button" role="radio" data-quality="low">Low</button>
           <button type="button" role="radio" data-quality="high">High</button>
         </span>
