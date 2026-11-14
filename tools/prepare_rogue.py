@@ -24,8 +24,8 @@ def view(data):
     idx = len(g['bufferViews']); g['bufferViews'].append({'buffer':0,'byteOffset':len(buf),'byteLength':len(data)})
     buf.extend(data); buf.extend(b'\0'*(-len(buf)%4)); return idx
 
-def image(im, name, fmt='PNG'):
-    stream = io.BytesIO(); im.save(stream,format=fmt,**({'quality':92} if fmt=='JPEG' else {}))
+def image(im, name, fmt='PNG', **extra):
+    stream = io.BytesIO(); im.save(stream,format=fmt,**({'quality':92, **extra} if fmt=='JPEG' else {}))
     g['images'].append({'name':name,'mimeType':'image/jpeg' if fmt=='JPEG' else 'image/png','bufferView':view(stream.getvalue())})
     g['textures'].append({'source':len(g['images'])-1,'sampler':0}); return len(g['textures'])-1
 
@@ -36,9 +36,11 @@ def texture(suffix, size):
 g['images']=[];g['textures']=[]
 g['samplers']=[{'magFilter':9729,'minFilter':9987,'wrapS':10497,'wrapT':10497}]
 base=image(texture('texture_0',2048),'Shadow base colour','JPEG')
-normal=image(texture('normal',2048),'Shadow tangent-space normal')
+# Normal and roughness/metallic maps are JPEG without colour subsampling (see tools/shrink_rogue_textures.py):
+# the normal map at 1024 keeps the in-game look and cuts the download from about 10 MB to about 3.6 MB.
+normal=image(texture('normal',1024),'Shadow tangent-space normal','JPEG',subsampling=0,optimize=True)
 rough=texture('roughness',1024).getchannel('R'); metal=texture('metallic',1024).getchannel('R')
-orm=image(Image.merge('RGB',(Image.new('L',rough.size,255),rough,metal)),'Shadow packed roughness metallic')
+orm=image(Image.merge('RGB',(Image.new('L',rough.size,255),rough,metal)),'Shadow packed roughness metallic','JPEG',subsampling=0,optimize=True)
 g['materials']=[{'name':'ZAY_Shadow_Leather_Cloth_Skin','doubleSided':True,
     'pbrMetallicRoughness':{'baseColorTexture':{'index':base},'metallicRoughnessTexture':{'index':orm},'metallicFactor':1,'roughnessFactor':1},
     'normalTexture':{'index':normal,'scale':0.7}}]
