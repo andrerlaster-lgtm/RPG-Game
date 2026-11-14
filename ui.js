@@ -14,7 +14,7 @@ fillIcons();
 
 // ---------- Settings (kept on this device) ----------
 const SETTINGS_KEY = 'bellemorne-settings-v1';
-const SETTINGS = { volume: 0.7, music: 0.6, cones: true, shake: true, battleSpeed: 1, view: '3d' };
+const SETTINGS = { volume: 0.7, music: 0.6, cones: true, shake: true, battleSpeed: 1, view: '3d', quality: 'auto' };
 try {
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
   if (saved && typeof saved === 'object') {
@@ -24,6 +24,7 @@ try {
     if (typeof saved.shake === 'boolean') SETTINGS.shake = saved.shake;
     if ([0.7, 1, 1.4].includes(saved.battleSpeed)) SETTINGS.battleSpeed = saved.battleSpeed;
     if (['3d', 'classic'].includes(saved.view)) SETTINGS.view = saved.view;
+    if (['auto', 'low', 'medium', 'high'].includes(saved.quality)) SETTINGS.quality = saved.quality;
   }
 } catch { /* settings fall back to defaults */ }
 function saveSettings() {
@@ -72,7 +73,8 @@ const optEls = {
   cones: document.getElementById('opt-cones'),
   shake: document.getElementById('opt-shake'),
   speed: document.getElementById('opt-speed'),
-  view: document.getElementById('opt-view')
+  view: document.getElementById('opt-view'),
+  quality: document.getElementById('opt-quality')
 };
 function renderOptions() {
   optEls.volume.value = String(Math.round(SETTINGS.volume * 100));
@@ -83,6 +85,8 @@ function renderOptions() {
   optEls.shake.setAttribute('aria-checked', String(SETTINGS.shake));
   optEls.speed.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.speed) === SETTINGS.battleSpeed)));
   optEls.view.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === SETTINGS.view)));
+  optEls.quality.querySelectorAll('button').forEach((b) => { b.setAttribute('aria-checked', String(b.dataset.quality === SETTINGS.quality)); b.disabled = !window.R3D; });
+  document.getElementById('opt-quality-note').textContent = SETTINGS.quality === 'auto' && window.R3D ? `Auto: using ${R3D.quality} on this device` : 'Shadows, glow and plants in the 3D view';
   // No WebGL on this device: the 3D view can't run, so say so instead of offering it.
   const no3d = !window.R3D;
   optEls.view.querySelector('[data-view="3d"]').disabled = no3d;
@@ -107,6 +111,7 @@ optEls.cones.addEventListener('click', () => { SETTINGS.cones = !SETTINGS.cones;
 optEls.shake.addEventListener('click', () => { SETTINGS.shake = !SETTINGS.shake; saveSettings(); renderOptions(); play('uiToggle', { vol: 0.6 }); });
 optEls.speed.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { SETTINGS.battleSpeed = Number(b.dataset.speed); saveSettings(); renderOptions(); }));
 optEls.view.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { SETTINGS.view = b.dataset.view; saveSettings(); renderOptions(); if (window.R3D) R3D.resetCamera(); }));
+optEls.quality.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { SETTINGS.quality = b.dataset.quality; saveSettings(); if (window.R3D) R3D.setQuality(SETTINGS.quality); renderOptions(); }));
 document.getElementById('options-done').addEventListener('click', closeOptions);
 optEls.root.addEventListener('click', (e) => { if (e.target === optEls.root) closeOptions(); });
 document.getElementById('title-options').addEventListener('click', openOptions);

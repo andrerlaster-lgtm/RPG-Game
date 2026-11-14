@@ -64,6 +64,8 @@ THE SOFTWARE.
 
 `vendor/three/addons/GLTFLoader.js` and `vendor/three/addons/BufferGeometryUtils.js` come from the same Three.js 0.169.0 package (`examples/jsm/`, MIT, same licence as above). The only change is their import lines, which point at `../three.module.min.js` and `./BufferGeometryUtils.js` so they load without an import map.
 
+The post-processing add-ons used by `post3d.js` (`EffectComposer.js`, `RenderPass.js`, `ShaderPass.js`, `UnrealBloomPass.js`, `OutputPass.js`, `Pass.js`, `MaskPass.js`, `CopyShader.js`, `LuminosityHighPassShader.js`, `OutputShader.js`) come from the same package (`examples/jsm/postprocessing/` and `examples/jsm/shaders/`, MIT). They sit flat in `vendor/three/addons/`, and again only their import lines were changed.
+
 
 ## 3D models — Polygonal Mind (CC0)
 

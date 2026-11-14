@@ -12,6 +12,8 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
 import { makeFigures } from './figure3d.js';
+import { makeSky, makeSkylineTexture, makeSkyline, makeMotes, nightAt, newNight } from './sky3d.js';
+import { makePost } from './post3d.js';
 import { makeCobbles, makeTint, withTint, makeGlow, makeWindow, makeBlob, makeMist } from './light3d.js';
 
 const S = 1 / TILE;
@@ -75,8 +77,10 @@ if (renderer) {
   setLook();
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0b1122, 8, 27);   // cool blue haze: far streets fade into night, not into black
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.08, 60);
+  scene.fog = new THREE.Fog(0x0b1122, 9, 34);   // cool blue haze: far streets fade into night, not into black
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.08, 170);
+  renderer.info.autoReset = false;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const hemi = new THREE.HemisphereLight(0x6a7fb0, 0x1c1a2c, 0.9);   // cool sky above, violet bounce from the ground
   scene.add(hemi);
   const OUTDOOR = { sky: new THREE.Color(0x6a7fb0), ground: new THREE.Color(0x1c1a2c), k: 0.9 };
@@ -84,6 +88,41 @@ if (renderer) {
   const moon = new THREE.DirectionalLight(0x86a0e0, 0.85);
   moon.position.set(-6, 14, -4);
   scene.add(moon, moon.target);
+  moon.shadow.camera.left = moon.shadow.camera.bottom = -14; moon.shadow.camera.right = moon.shadow.camera.top = 14;
+  moon.shadow.camera.near = 1; moon.shadow.camera.far = 90;
+  moon.shadow.bias = -0.0006; moon.shadow.normalBias = 0.035;
+  // The sky, the far skyline's texture and the drifting motes are made once; the night moves slowly through them.
+  const SKY = makeSky(), MOTES = makeMotes(), skylineTex = makeSkylineTexture(), NIGHT = newNight();
+  scene.add(SKY.mesh, MOTES.points);
+  let nightClock = 150 + Math.random() * 200, indoors = false;
+  const post = makePost(renderer, scene, camera);
+
+  // ---------- Graphics quality (Options → Graphics) ----------
+  // pr: sharpest pixel ratio allowed. shadow: moon shadow map size (0 = soft blobs only). post: bloom and grading.
+  // msaa: edge smoothing samples in the post buffer. veg: how much grass and scatter to plant.
+  const QUALITY = {
+    low: { pr: 1, shadow: 0, post: false, msaa: 0, motes: false, veg: 0.35 },
+    medium: { pr: 1.25, shadow: 1024, post: true, msaa: 0, motes: true, veg: 0.7 },
+    high: { pr: 1.75, shadow: 2048, post: true, msaa: 4, motes: true, veg: 1 }
+  };
+  const LEVELS = ['low', 'medium', 'high'];
+  let Q = QUALITY.high, qName = 'high', slowFor = 0, lastNow = 0;
+  function setQuality(name) {
+    const auto = !QUALITY[name];
+    const pick = auto ? (isTouch ? 'medium' : 'high') : name;
+    const veg = Q.veg;
+    Q = QUALITY[pick]; qName = pick; slowFor = 0;
+    setQuality.auto = auto;
+    renderer.shadowMap.enabled = !!Q.shadow;
+    moon.castShadow = !!Q.shadow && !indoors;
+    if (Q.shadow && moon.shadow.mapSize.x !== Q.shadow) { moon.shadow.mapSize.set(Q.shadow, Q.shadow); if (moon.shadow.map) { moon.shadow.map.dispose(); moon.shadow.map = null; } }
+    post.set(Q.post, Q.msaa);
+    MOTES.points.visible = Q.motes;
+    SHADOW_MAT.opacity = Q.shadow ? 0.6 : 1;
+    scene.traverse((o) => { if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true; });
+    if (veg !== Q.veg) builtFor = null;
+    resize3d();
+  }
 
   // Street lamps light the scene; only the ones nearest ZAY get a real light (phones can't afford all).
   const LIGHTS = [];
@@ -93,12 +132,13 @@ if (renderer) {
     LIGHTS.push(l);
   }
   // ZAY's own faint glow so he never disappears into the dark.
-  const zayLight = new THREE.PointLight(0x8fa0d8, 2.2, 4.8, 1.5);
+  const zayLight = new THREE.PointLight(0x9fb0e8, 3.4, 5.2, 1.5);
   scene.add(zayLight);
 
   let baseFov = 60;
   const resize3d = () => {
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    const pr = Math.min(window.devicePixelRatio || 1, Q.pr);
+    renderer.setPixelRatio(pr);
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     el.style.width = window.innerWidth + 'px';
     el.style.height = window.innerHeight + 'px';
@@ -114,9 +154,9 @@ if (renderer) {
     camera.fov = baseFov = 2 * Math.atan(Math.tan(vfov / 2) * fullH / h) * 180 / Math.PI;
     if (extra) camera.setViewOffset(w, fullH, 0, 2 * extra, w, h); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
+    post.resize(w, h, pr);
   };
   window.addEventListener('resize', resize3d);
-  resize3d();
 
   // ---------- Small helpers ----------
   const mats = new Map();
@@ -231,7 +271,7 @@ if (renderer) {
   // Night-look textures, drawn once (see light3d.js).
   const cobbles = makeCobbles({ maxAniso: Math.min(4, renderer.capabilities.getMaxAnisotropy()) });
   const glowTex = makeGlow(), windowTex = makeWindow(), blobTex = makeBlob(), mistTex = makeMist();
-  const SHARED_TEX = new Set([wallTex, roofTex, timberTex, stoneTex, cobbles.albedo, glowTex, windowTex, blobTex, mistTex, ...SLOPES.map((m) => m.map)]);
+  const SHARED_TEX = new Set([skylineTex, wallTex, roofTex, timberTex, stoneTex, cobbles.albedo, glowTex, windowTex, blobTex, mistTex, ...SLOPES.map((m) => m.map)]);
   let tintTex = null;
   let MIST = [];
   const addMat = (map, color, opacity) => new THREE.MeshBasicMaterial({ map, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -245,6 +285,7 @@ if (renderer) {
 
   // ---------- The district (rebuilt whenever a new map loads) ----------
   let world = null, builtFor = null;
+  setQuality(SETTINGS.quality);
   let LABEL_SPRITES = [], EXIT_MARKS = [];
   function build() {
     if (world) {
@@ -264,7 +305,8 @@ if (renderer) {
     const groundTex = new THREE.CanvasTexture(mapCanvas);
     groundTex.colorSpace = THREE.SRGBColorSpace;
     groundTex.anisotropy = 4;
-    const indoors = !grid.some((row) => row.includes('.'));
+    indoors = !grid.some((row) => row.includes('.') || row.includes('w') || row.includes('g'));
+    moon.castShadow = !!Q.shadow && !indoors;
     const mood = indoors ? INDOOR : OUTDOOR;
     hemi.color.copy(mood.sky); hemi.groundColor.copy(mood.ground); hemi.intensity = mood.k;
     if (tintTex) tintTex.dispose();
@@ -272,6 +314,7 @@ if (renderer) {
     const ground = mesh(new THREE.PlaneGeometry(W, H), withTint(new THREE.MeshLambertMaterial({ map: groundTex }), tintTex), W / 2, 0, H / 2);
     ground.geometry.setAttribute('tintUv', ground.geometry.attributes.uv.clone());
     ground.rotation.x = -Math.PI / 2;
+    ground.userData.noCast = true;
     world.add(ground);
     // Cobbled streets: the street tiles get real cobbles with relief (normal map) and a little lantern sheen,
     // over the painted ground, which stays underneath for everything else (doorsteps, grass, wooden floors).
@@ -294,12 +337,15 @@ if (renderer) {
         geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); geo.setAttribute('tintUv', new THREE.BufferAttribute(tuv, 2));
         geo.setIndex(new THREE.BufferAttribute(idx, 1));
         const mat = withTint(new THREE.MeshPhongMaterial({ map: cobbles.albedo, normalMap: cobbles.normal, normalScale: new THREE.Vector2(1.1, 1.1), specular: 0x3c3224, shininess: 22, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), tintTex);
-        world.add(new THREE.Mesh(geo, mat));
+        const cob = new THREE.Mesh(geo, mat); cob.userData.noCast = true;
+        world.add(cob);
       }
     }
     const beyond = mesh(new THREE.PlaneGeometry(W + 80, H + 80), lambert(0x0b0a10), W / 2, -0.02, H / 2);
     beyond.rotation.x = -Math.PI / 2;
+    beyond.userData.noCast = true;
     world.add(beyond);
+    if (!indoors) world.add(makeSkyline(skylineTex, W, H));
 
     // Buildings: one box per building tile, all in a single instanced draw.
     const solid = [];
@@ -476,6 +522,14 @@ if (renderer) {
       EXIT_MARKS.push(m);
     }
 
+    // Solid things cast and catch the moon's shadows; glows, glass and mist don't.
+    world.traverse((o) => {
+      if (!o.isMesh) return;
+      const m = Array.isArray(o.material) ? o.material[0] : o.material;
+      const solid = !!m && !m.transparent && !m.isMeshBasicMaterial && !m.isShaderMaterial;
+      o.castShadow = solid && !o.userData.noCast;
+      o.receiveShadow = solid && !o.userData.noReceive;
+    });
     scene.add(world);
     for (const [obj, g] of figures) { drop(g); figures.delete(obj); }
     // Cones and marks belong to the last visit's guards.
@@ -666,8 +720,11 @@ if (renderer) {
   // Put a figure where its game object is and animate it. Far-off figures are hidden (the haze covers them anyway).
   function place(g, x, y, dir, dt, extra = {}) {
     if (g.userData.pose === false) { g.position.set(x * S, 0, y * S); return; }
-    const far = Math.hypot(x * S - camera.position.x, y * S - camera.position.z) > 30;
-    g.visible = !far;
+    const away = Math.hypot(x * S - camera.position.x, y * S - camera.position.z);
+    g.visible = away < 27;
+    // Only people near the camera throw a real shadow; the rest keep the soft blob at their feet.
+    const cast = away < 13;
+    if (g.userData.cast !== cast) { g.userData.cast = cast; g.traverse((o) => { if (o.isMesh && o.userData.own) o.castShadow = cast; }); }
     FIG.pose(g, { x, y, dir, dt, t: state.time, S, roll: -1, ...extra });
     castShadow(g);
   }
@@ -880,7 +937,8 @@ if (renderer) {
     const faded = p.hidden || (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0);
     const zm = zay.userData.mat;
     if (zm.transparent !== faded) { zm.transparent = faded; zm.opacity = faded ? 0.55 : 1; zm.needsUpdate = true; }
-    zayLight.position.set(p.x * S, 1.3, p.y * S);
+    // A faint cool light just camera-side of ZAY, so his outline always reads against the dark.
+    zayLight.position.set(p.x * S + (camera.position.x - p.x * S) * 0.22, 1.5, p.y * S + (camera.position.z - p.y * S) * 0.22);
 
     // Guards
     for (const g of state.guards) {
@@ -1012,8 +1070,43 @@ if (renderer) {
     }
 
     updateCamera3d(dt);
-    renderer.render(scene, camera);
+    atmosphere(dt, p);
+    renderer.info.reset();
+    if (post.on) post.render(dt, { alert: alertS, hidden: hiddenS });
+    else renderer.render(scene, camera);
+    // On Auto, step the quality down if this device can't keep up (about 25 frames a second for 4 seconds).
+    const now = performance.now(), ms = now - lastNow; lastNow = now;
+    if (setQuality.auto && ms < 500 && !document.hidden) {
+      slowFor = ms > 40 ? slowFor + ms : Math.max(0, slowFor - ms * 2);
+      if (slowFor > 4000 && qName !== 'low') { const down = LEVELS[LEVELS.indexOf(qName) - 1]; setQuality(down); setQuality.auto = true; }
+    }
   }
 
-  window.R3D = { ready: true, render, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
+  // The air each frame: where the night has got to (sky, haze, moonlight), the moon's shadow following ZAY,
+  // and how tense things are (the red edge when guards are on you).
+  let alertS = 0, hiddenS = 0;
+  const shadowAt = new THREE.Vector3();
+  function atmosphere(dt, p) {
+    nightClock += dt;
+    nightAt(nightClock, NIGHT);
+    SKY.uniforms.uTime.value = nightClock; SKY.uniforms.uMoon.value.copy(NIGHT.dir);
+    SKY.uniforms.uZenith.value.copy(NIGHT.zen); SKY.uniforms.uHorizon.value.copy(NIGHT.hor); SKY.uniforms.uGlow.value.copy(NIGHT.glow);
+    SKY.mesh.visible = !indoors;
+    scene.fog.color.copy(NIGHT.fog);
+    moon.color.copy(NIGHT.moon); moon.intensity = indoors ? 0.3 : NIGHT.k;
+    const mood = indoors ? INDOOR : OUTDOOR;
+    hemi.intensity = mood.k * (indoors ? 1 : NIGHT.amb);
+    // Keep the shadow box centred near ZAY, moved in whole steps so shadow edges don't crawl as he walks.
+    shadowAt.set(Math.round(p.x * S * 2) / 2, 0, Math.round(p.y * S * 2) / 2);
+    moon.target.position.copy(shadowAt);
+    moon.position.copy(shadowAt).addScaledVector(NIGHT.dir, 45);
+    MOON_AWAY.set(-NIGHT.dir.x, -NIGHT.dir.z).normalize();
+    MOTES.uniforms.uTime.value = nightClock; MOTES.uniforms.uCam.value.copy(camera.position);
+    MOTES.uniforms.uSize.value = 26 * renderer.getPixelRatio() * (window.innerHeight / 720);
+    const k = Math.min(1, dt * 3);
+    alertS += ((state.guards.some((g) => g.state === 'alert') ? 1 : 0) - alertS) * k;
+    hiddenS += ((p.hidden ? 1 : 0) - hiddenS) * k;
+  }
+
+  window.R3D = { ready: true, render, setLook, setQuality, get quality() { return qName; }, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
 }
