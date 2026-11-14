@@ -1,0 +1,78 @@
+{
+  "environment": {
+    "browser": "157.0.8103.78",
+    "cpu": "Apple M1",
+    "viewport": "1280x800",
+    "frames": 100
+  },
+  "before": {
+    "medianFrameMs": 16.699999999999818,
+    "p95FrameMs": 16.700000000000728,
+    "calls": 133,
+    "geometries": 123,
+    "textures": 26,
+    "zoom": 3.7,
+    "boom": 1,
+    "clearance": 1,
+    "yaw": -3.0848354957676998,
+    "tris": 58562,
+    "cam": [
+      32.19,
+      3.22,
+      16.52
+    ],
+    "look": [
+      28.5,
+      0.85,
+      16.31
+    ]
+  },
+  "after": {
+    "medianFrameMs": 16.699999999999818,
+    "p95FrameMs": 16.700000000000728,
+    "lighting": "night",
+    "quality": "high",
+    "calls": 171,
+    "geometries": 122,
+    "textures": 34,
+    "zoom": 3.7,
+    "boom": 1,
+    "clearance": 1,
+    "yaw": -3.0848354957676998,
+    "tris": 119865,
+    "cam": [
+      32.19,
+      3.22,
+      16.52
+    ],
+    "look": [
+      28.5,
+      0.85,
+      16.31
+    ]
+  },
+  "low": {
+    "medianFrameMs": 16.69999999999891,
+    "p95FrameMs": 16.700000000000728,
+    "lighting": "night",
+    "quality": "low",
+    "calls": 131,
+    "geometries": 120,
+    "textures": 40,
+    "zoom": 3.7,
+    "boom": 1,
+    "clearance": 1,
+    "yaw": -3.0848354957676998,
+    "tris": 81925,
+    "cam": [
+      32.19,
+      3.22,
+      16.52
+    ],
+    "look": [
+      28.5,
+      0.85,
+      16.31
+    ]
+  }
+}

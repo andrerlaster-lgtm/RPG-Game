@@ -1,5 +1,15 @@
 # Third-party notices
 
+## Temporary ZAY rig — KayKit Adventurers 1.0 (CC0)
+
+`models/zay/rogue.glb` is the unmodified `Rogue_Hooded.glb` from [Kay Lousberg's official KayKit Adventurers repository](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0), commit `672074b73ba276876a19e8816ecdc5241817ab47`, under `addons/kaykit_character_pack_adventures/Characters/gltf/`.
+
+The model, embedded atlas and 76 embedded animation clips are released under [Creative Commons Zero 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Personal and commercial use are allowed; attribution is optional. The creator's original license notice is preserved in `models/zay/LICENSE.txt`. Credit: **Kay Lousberg / KayKit**.
+
+SHA-256: `93e6e25213009952276d9cf34f5d96a243767334c66f280db0433ddfabb91545` (3,597,652 bytes). Runtime changes hide crossbows/throwable equipment, normalize scale/orientation, adjust roughness, blend selected clips and remove horizontal root motion from cloned animation tracks. The source binary remains unchanged.
+
+This is an explicitly approved visual-development placeholder for ZAY; it does not redefine his canonical appearance or story. No other library's character assets were incorporated. See `docs/graphics/major-overhaul.md` for evaluation and replacement instructions.
+
 ## Icons — unity-ui-toolkit-design-system
 
 The icons in `icons.js` come from https://github.com/sinanata/unity-ui-toolkit-design-system (fills changed to `currentColor`).

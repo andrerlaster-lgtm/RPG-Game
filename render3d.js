@@ -6,9 +6,10 @@
 //
 // Scale: one map tile (32 px) is one unit. The map's x runs along x, its y along z, and up is y.
 // A figure faces +x, so a game direction `dir` is rotation.y = -dir.
-// Characters are placeholder figures built from simple shapes in the model-sheet colours until
-// proper CC0 character models are added (see README, "3D view").
+// ZAY uses a replaceable CC0 rig; named NPCs retain their established procedural figures.
 
+import { makePlaster, makeWetness, createAtmosphere, addFacadeArt } from './world-art3d.js';
+import { loadHero } from './hero3d.js';
 import * as THREE from './vendor/three/three.module.min.js';
 import { mergeGeometries } from './vendor/three/addons/BufferGeometryUtils.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
@@ -50,8 +51,6 @@ if (renderer) {
   const camera = new THREE.PerspectiveCamera(60, 1, 0.08, 60);
   const hemi = new THREE.HemisphereLight(0x6a7fb0, 0x1c1a2c, 0.9);   // cool sky above, violet bounce from the ground
   scene.add(hemi);
-  const OUTDOOR = { sky: new THREE.Color(0x6a7fb0), ground: new THREE.Color(0x1c1a2c), k: 0.9 };
-  const INDOOR = { sky: new THREE.Color(0xd0a070), ground: new THREE.Color(0x40281a), k: 1.3 };   // rooms with no street: a warm glow instead of cold sky
   const moon = new THREE.DirectionalLight(0x86a0e0, 0.85);
   moon.position.set(-6, 14, -4);
   scene.add(moon, moon.target);
@@ -64,6 +63,14 @@ if (renderer) {
   moon.shadow.mapSize.setScalar(isTouch ? 1024 : 2048);
   moon.shadow.bias = -0.0004;
   moon.shadow.normalBias = 0.025;
+  const atmosphere = createAtmosphere(renderer, scene, hemi, moon);
+  let mood = null, indoorScene = false, graphicsKey = '', facadeDetail = null;
+  function applyGraphics() {
+    mood = atmosphere.apply(SETTINGS.lighting || 'night', indoorScene);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SETTINGS.quality === 'low' ? 1 : 1.5));
+    renderer.shadowMap.enabled = SETTINGS.quality !== 'low';
+    graphicsKey = SETTINGS.lighting + SETTINGS.quality;
+  }
 
   // Street lamps light the scene; only the ones nearest ZAY get a real light (phones can't afford all).
   const LIGHTS = [];
@@ -77,7 +84,7 @@ if (renderer) {
   scene.add(zayLight);
 
   const resize3d = () => {
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SETTINGS.quality === 'low' ? 1 : 1.5));
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     el.style.width = window.innerWidth + 'px';
     el.style.height = window.innerHeight + 'px';
@@ -101,7 +108,7 @@ if (renderer) {
   const mats = new Map();
   const lambert = (color) => {
     const key = 'l' + color;
-    if (!mats.has(key)) mats.set(key, new THREE.MeshLambertMaterial({ color }));
+    if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
     return mats.get(key);
   };
   const glowMat = (color, opacity = 1) => {
@@ -199,18 +206,20 @@ if (renderer) {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     return t;
   };
-  const wallMat = new THREE.MeshLambertMaterial({ map: wallTex, color: 0xcfc4cc });   // a touch less red under the tone mapper
-  const roofMat = new THREE.MeshLambertMaterial({ map: roofTex });
-  const WALLS = { brick: wallMat, timber: new THREE.MeshLambertMaterial({ map: timberTex }), stone: new THREE.MeshLambertMaterial({ map: stoneTex }) };
+  const plaster = makePlaster(), wetness = makeWetness();
+  const plasterMat = new THREE.MeshStandardMaterial({map: plaster.map, bumpMap: plaster.bump, bumpScale: 0.035, roughness: 0.92});
+  const wallMat = new THREE.MeshStandardMaterial({ roughness: 0.9, map: wallTex, color: 0xcfc4cc });   // a touch less red under the tone mapper
+  const roofMat = new THREE.MeshStandardMaterial({ map: roofTex, roughness: 0.65 });
+  const WALLS = { plaster: plasterMat, brick: wallMat, timber: new THREE.MeshLambertMaterial({ map: timberTex }), stone: new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.85 }) };
   const SLOPES = [
-    new THREE.MeshLambertMaterial({ map: slopeTex('#3a3a4c', 'rgba(255,255,255,.08)'), side: THREE.DoubleSide }),   // slate
-    new THREE.MeshLambertMaterial({ map: slopeTex('#2f4a3c', 'rgba(200,255,220,.08)'), side: THREE.DoubleSide }),   // old copper
-    new THREE.MeshLambertMaterial({ map: slopeTex('#5a3328', 'rgba(255,200,170,.08)'), side: THREE.DoubleSide })    // clay tile
+    new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.15, map: slopeTex('#3a3a4c', 'rgba(255,255,255,.08)'), side: THREE.DoubleSide }),   // slate
+    new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.15, map: slopeTex('#2f4a3c', 'rgba(200,255,220,.08)'), side: THREE.DoubleSide }),   // old copper
+    new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.15, map: slopeTex('#5a3328', 'rgba(255,200,170,.08)'), side: THREE.DoubleSide })    // clay tile
   ];
   // Night-look textures, drawn once (see light3d.js).
   const cobbles = makeCobbles({ maxAniso: Math.min(4, renderer.capabilities.getMaxAnisotropy()) });
   const glowTex = makeGlow(), windowTex = makeWindow(), blobTex = makeBlob(), mistTex = makeMist();
-  const SHARED_TEX = new Set([wallTex, roofTex, timberTex, stoneTex, cobbles.albedo, glowTex, windowTex, blobTex, mistTex, ...SLOPES.map((m) => m.map)]);
+  const SHARED_TEX = new Set([plaster.map, plaster.bump, wetness, wallTex, roofTex, timberTex, stoneTex, cobbles.albedo, glowTex, windowTex, blobTex, mistTex, ...SLOPES.map((m) => m.map)]);
   let tintTex = null;
   let MIST = [];
   let riverMaterial = null;
@@ -253,8 +262,7 @@ if (renderer) {
     groundTex.colorSpace = THREE.SRGBColorSpace;
     groundTex.anisotropy = 4;
     const indoors = !grid.some((row) => row.includes('.'));
-    const mood = indoors ? INDOOR : OUTDOOR;
-    hemi.color.copy(mood.sky); hemi.groundColor.copy(mood.ground); hemi.intensity = mood.k;
+    indoorScene = indoors; applyGraphics();
     if (tintTex) tintTex.dispose();
     tintTex = makeTint({ grid, W, H, props: PROPS, TILE });
     const ground = mesh(new THREE.PlaneGeometry(W, H), withTint(new THREE.MeshLambertMaterial({ map: groundTex }), tintTex), W / 2, 0, H / 2);
@@ -268,7 +276,7 @@ if (renderer) {
       for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) if (grid[ty][tx] === '.') street.push([tx, ty]);
       if (street.length) {
         const pos = new Float32Array(street.length * 12), uv = new Float32Array(street.length * 8), tuv = new Float32Array(street.length * 8), nor = new Float32Array(street.length * 12), idx = new Uint16Array(street.length * 6);
-        const PERIOD = 4;   // one cobble texture covers 4 x 4 tiles
+        const PERIOD = 2.6;   // one cobble texture covers 2.6 x 2.6 tiles
         street.forEach(([tx, ty], i) => {
           [[0, 0], [1, 0], [1, 1], [0, 1]].forEach(([dx, dz], k) => {
             const x = tx + dx, z = ty + dz, v = i * 4 + k;
@@ -281,7 +289,7 @@ if (renderer) {
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
         geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); geo.setAttribute('tintUv', new THREE.BufferAttribute(tuv, 2));
         geo.setIndex(new THREE.BufferAttribute(idx, 1));
-        const mat = withTint(new THREE.MeshPhongMaterial({ map: cobbles.albedo, normalMap: cobbles.normal, normalScale: new THREE.Vector2(1.1, 1.1), specular: 0x3c3224, shininess: 22, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), tintTex);
+        const mat = withTint(new THREE.MeshStandardMaterial({ map: cobbles.albedo, normalMap: cobbles.normal, normalScale: new THREE.Vector2(0.5, 0.5), roughnessMap: wetness, roughness: 0.85, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), tintTex);
         world.add(new THREE.Mesh(geo, mat));
       }
     }
@@ -312,7 +320,7 @@ if (renderer) {
     riverMaterial = null;
     if (water.length) {
       // A lit, continuous surface above the painted map (the old river plane sat below it).
-      riverMaterial = new THREE.MeshPhongMaterial({ color: 0x162f43, specular: 0x8bacc4, shininess: 85 });
+      riverMaterial = new THREE.MeshStandardMaterial({ color: 0x234650, roughness: 0.24, metalness: 0.1 });
       riverMaterial.onBeforeCompile = (shader) => {
         shader.uniforms.riverTime = { value: 0 };
         riverMaterial.userData.shader = shader;
@@ -329,15 +337,22 @@ if (renderer) {
       const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), one = new THREE.Vector3(1, 1, 1);
       water.forEach(([tx, ty], i) => wm.setMatrixAt(i, m4.compose(new THREE.Vector3(tx + 0.5, 0.012, ty + 0.5), q, one)));
       world.add(wm);
+      // Continue river art beyond the southern map edge; navigation remains bounded by the map.
+      if (grid[H-1].filter(t => t === 'w').length > W / 2) {
+        const horizon = new THREE.InstancedMesh(new THREE.PlaneGeometry(W + 80, 70), riverMaterial, 1);
+        horizon.setMatrixAt(0, m4.compose(new THREE.Vector3(W / 2, 0.012, H + 35), q, one));
+        world.add(horizon);
+      }
     }
     buildStreetDetail(indoors);
+    facadeDetail = !indoors ? addFacadeArt({world, edges: EDGES, grid, W, H, S, estate: state.district === 'crown-estate'}) : null;
 
     // Windows on street-facing walls: warm lit panes or dark shutters.
     const lit = [], shut = [];
     for (const e of EDGES) if (e.win) (e.win.lit ? lit : shut).push(e);
     const ROT = { s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 };
     const NORMAL = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] };
-    const pane = new THREE.PlaneGeometry(0.26, 0.4);
+    const pane = new THREE.PlaneGeometry(0.44, 0.56);
     const paneMat = new THREE.MeshBasicMaterial({ map: windowTex });
     const haloGeo = new THREE.PlaneGeometry(0.78, 0.98), flatGeo = new THREE.PlaneGeometry(1, 1);
     const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
@@ -529,14 +544,14 @@ if (renderer) {
     const rects = buildRects();
     TOPS = new Float32Array(W * H);
     const hash = (r) => ((r.x * 73856093) ^ (r.y * 19349663) ^ (r.w * 83492791)) >>> 0;
-    const tiles = { brick: [], timber: [], stone: [] };
-    const gables = { brick: [], timber: [], stone: [] };
+    const tiles = { plaster: [], brick: [], timber: [], stone: [] }, colors = new Map();
+    const gables = { plaster: [], brick: [], timber: [], stone: [] };
     const slopes = SLOPES.map(() => []);
     const O = 0.14;   // eaves overhang
     for (const r of rects) {
       const hv = hash(r);
-      const finish = estate ? 'stone' : hv % 5 < 3 ? 'timber' : 'brick';
-      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) { tiles[finish].push([r.x + i, r.y + j]); TOPS[(r.y + j) * W + r.x + i] = WALL_H; }
+      const finish = estate ? 'stone' : hv % 5 < 4 ? 'plaster' : 'brick';
+      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) { tiles[finish].push([r.x + i, r.y + j]); colors.set((r.y+j)*W+r.x+i, [0x93b5a8,0xc6a98c,0xa6b8c5,0xc29685,0xc5bf9b][hv%5]); TOPS[(r.y + j) * W + r.x + i] = WALL_H; }
       if (Math.min(r.w, r.h) < 2) continue;
       // Ridge along the long side; the roof rises half the short side (capped), like a steep city roof.
       const alongX = r.w >= r.h;
@@ -562,7 +577,7 @@ if (renderer) {
       if (!list.length) continue;
       const mat = WALLS[finish];
       const im = new THREE.InstancedMesh(box, [mat, mat, roofMat, roofMat, mat, mat], list.length);
-      list.forEach(([tx, ty], i) => im.setMatrixAt(i, m4.makeTranslation(tx + 0.5, WALL_H / 2, ty + 0.5)));
+      list.forEach(([tx, ty], i) => { im.setMatrixAt(i, m4.makeTranslation(tx + 0.5, WALL_H / 2, ty + 0.5)); if(finish==='plaster')im.setColorAt(i,new THREE.Color(colors.get(ty*W+tx))); });
       world.add(im);
     }
     // Roof slopes: quads with the slate texture repeating every unit.
@@ -744,6 +759,19 @@ if (renderer) {
     g.userData = { inner, legL, legR, armL, armR, body, head, shadow: sh };
     return g;
   }
+  let heroRig = null, heroError = null;
+  loadHero().then(rig => { heroRig = rig; }).catch(error => { heroError = error.message; console.warn('ZAY model unavailable; using procedural fallback.', error.message); });
+  function playableFigure(town) {
+    if (!heroRig) return zayFigure(town);
+    const g = heroRig.group; g.userData.town = town;
+    if (!g.userData.shadow) {
+      const sh = mesh(new THREE.PlaneGeometry(0.95, 0.95), SHADOW_MAT, 0, 0.014, 0);
+      sh.rotation.order = 'YXZ'; sh.rotation.x = -Math.PI / 2; sh.renderOrder = 2; g.add(sh); g.userData.shadow = sh;
+      const ledger = mesh(new THREE.BoxGeometry(0.16, 0.2, 0.05), lambert(0x7a1f22), -0.12, 0.62, 0.2);
+      g.add(ledger); g.userData.ledger = ledger;
+    }
+    return g;
+  }
   function zayFigure(town) {
     const g = figure(town
       ? { coat: 0x2c2f36, low: 0x1c1d22, trim: 0xb39a72, skin: 0x5a3b2b, hair: 0x1a110c, hairStyle: 'locs', eyes: 0xf3c25c }
@@ -826,6 +854,7 @@ if (renderer) {
   let frameNo = 0;
   function releaseFigure(g) {
     scene.remove(g);
+    if (g.userData.rig) { g.userData.rig.reset(); return; }
     g.traverse((o) => {
       if (o.geometry && ![coinGeo, cardGeo, sparkGeo].includes(o.geometry)) o.geometry.dispose();
       if (o.userData.ownMat) o.material.dispose();
@@ -881,6 +910,7 @@ if (renderer) {
     g.position.set(x * S, 0, y * S);
     g.rotation.y += angDiff(g.rotation.y, -dir) * Traversal.damp(18, dt);
     castShadow(g);
+    if (u.rig) { u.rig.update(state.paused || state.mode !== 'field' ? 0 : dt, speed, state.player); return; }
     const swing = Math.sin(u.walk) * 0.62 * u.stride;
     u.legL.rotation.z = swing; u.legR.rotation.z = -swing;
     u.armL.rotation.z = -swing * 0.75; u.armR.rotation.z = swing * 0.75;
@@ -1099,6 +1129,7 @@ if (renderer) {
   function render(dt) {
     if (!LEVEL) return;
     if (builtFor !== LEVEL) build();
+    if (graphicsKey !== SETTINGS.lighting + SETTINGS.quality) applyGraphics();
     frameNo++;
     const p = state.player;
     const t = state.time;
@@ -1107,11 +1138,11 @@ if (renderer) {
 
     // ZAY
     let zay = figures.get(p);
-    if (zay && zay.userData.town !== town) { releaseFigure(zay); figures.delete(p); }
-    zay = figureFor(p, () => zayFigure(town));
+    if (zay && (zay.userData.town !== town || (!!heroRig && !zay.userData.rig))) { releaseFigure(zay); figures.delete(p); }
+    zay = figureFor(p, () => playableFigure(town));
     place(zay, p.x, p.y, p.dir, dt);
-    if (p.dashT > 0) { zay.userData.inner.rotation.z = -(1 - p.dashT / 0.17) * Math.PI * 2; zay.userData.inner.position.y = 0.25; }
-    zay.userData.tail.rotation.y = Math.sin(t * 5 + p.step) * 0.5;
+    if (!zay.userData.rig && p.dashT > 0) { zay.userData.inner.rotation.z = -(1 - p.dashT / 0.17) * Math.PI * 2; zay.userData.inner.position.y = 0.25; }
+    if (zay.userData.tail) zay.userData.tail.rotation.y = Math.sin(t * 5 + p.step) * 0.5;
     zay.userData.ledger.visible = !!p.hasLedger;
     const faded = p.hidden || (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0);
     zay.traverse((o) => { if (o.isMesh && o.material && !o.material.isMeshBasicMaterial) { if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = true; } o.material.transparent = faded; o.material.opacity = faded ? 0.5 : 1; } });
@@ -1236,17 +1267,22 @@ if (renderer) {
       if (!l) { L.intensity = 0; return; }
       L.position.set(l.x * S, 1.9, l.y * S);
       L.distance = l.r * S * 1.6;
-      L.intensity = 7 * flick;
+      L.visible = SETTINGS.quality !== 'low' || i < 3;
+      L.intensity = 7 * flick * (mood?.lamps ?? 1);
     });
-    POOL_MAT.opacity = POOL_BASE * flick; HALO_MAT.opacity = HALO_BASE * flick;
+    POOL_MAT.opacity = POOL_BASE * flick * (mood?.lamps ?? 1); HALO_MAT.opacity = HALO_BASE * flick * (mood?.lamps ?? 1);
     for (const m of MIST) {
-      m.sp.visible = Math.hypot(m.x - camera.position.x, m.z - camera.position.z) < 14;
+      m.sp.visible = SETTINGS.quality !== 'low' && SETTINGS.lighting !== 'day' && Math.hypot(m.x - camera.position.x, m.z - camera.position.z) < 14;
       m.sp.position.set(m.x + Math.sin(t * 0.15 + m.ph) * 0.9, 0.75 + Math.sin(t * 0.2 + m.ph * 2) * 0.1, m.z + Math.cos(t * 0.12 + m.ph) * 0.6);
     }
 
     updateCamera3d(dt);
+    if (facadeDetail) for (const batch of facadeDetail.children) {
+      const sphere = batch.boundingSphere;
+      batch.visible = camera.position.distanceTo(sphere.center) < sphere.radius + (SETTINGS.quality === 'low' ? 8 : 18);
+    }
     renderer.render(scene, camera);
   }
 
-  window.R3D = { ready: true, render, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
+  window.R3D = { ready: true, render, playHero: role => heroRig?.play(role), hero: () => heroRig?.debug() || { loaded: false, error: heroError }, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ lighting: atmosphere.current, quality: renderer.shadowMap.enabled ? 'high' : 'low', calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
 }

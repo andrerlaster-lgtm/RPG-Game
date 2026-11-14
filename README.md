@@ -177,9 +177,10 @@ The field is drawn in 3D by default, with a chase camera behind ZAY (`render3d.j
 - **Shared game systems.** Maps, collision, stealth, guard vision, saves and every job use the same code as the Classic view. The 3D controls add smoothing on top of those rules. Options → View switches between them at any time.
 - **Controls:** WASD moves relative to the camera with smooth facing, acceleration and quick braking. Arrow keys, the touch wheel and controller retain forward/back/turn. Left-drag the open view to orbit (also on touch); wheel or +/− zoom; C recenters. Cards still fly where ZAY faces. Footsteps and sprint noise follow actual movement, so pushing into a wall stays quiet.
 - **Camera:** follows behind and above ZAY, with a stable heading during WASD movement. It sweeps a camera-sized volume against buildings, roof heights, furniture and projecting balconies, pulls in immediately, and eases back out. The smoothed camera path is checked too, preventing corner cutting. Very close cameras hide ZAY briefly to keep the view clear. On phones the view is shifted up so ZAY stands above the thumb controls.
-- **What's drawn:** the same painted ground as Classic; buildings with timber-framed plaster or brick walls (cut stone on the Veyrane estate), pitched slate, copper or clay roofs on anything at least two tiles deep, and lit or shuttered windows; hedges, furniture and market stalls, lamp posts (the six nearest give real light), the boat, exits as a soft gold glow, place names, vision cones on the ground, awareness rings and "!" over guards, the E / Use / Lift prompt, speech bubbles, and the gold objective arrow.
+- **What's drawn:** the same map as Classic, with wet cobbles, varied plaster/brick buildings (cut stone on the Veyrane estate), pitched roofs, pale cornices, framed windows, louvered shutters, scrollwork balconies, flower boxes and layered planting. Existing market/street furniture, boat, exits, labels, awareness markers and interaction prompts remain.
 - **Market stalls, stools and kegs are real models:** CC0 models by Polygonal Mind (`models/props.glb`, 644 KB, loaded by `vendor/three/addons/GLTFLoader.js`). Food and mask stalls use the market booths, facing the open street and fitted to the stall's tiles. Tables get stools, and the Crooked Halo bar gets kegs. If the file can't load, the simple boxes are used instead.
-- **Characters remain procedural, pending authored rigs:** articulated arms and hip-pivoted legs, blended distance-based strides and a roll pose, built from shapes in the model-sheet colours (ZAY's coat, locs, katana and tail; Noe, Severin, guards, watch, marks and locals). ZAY now has pointed ears, tied locs, a long curved tail, boots and moving coat panels. The next step is real rigged CC0 character models (for example Quaternius or Kenney packs); those sites are blocked from the build environment. The plan now is to make them with MPFB2 in Blender: see `docs/characters-with-mpfb2.md`.
+- **ZAY's temporary playable rig:** KayKit's CC0 hooded rogue, with skinned idle/walk/run, dodge, card-throw and takedown animations. The approved placeholder does not change ZAY's canonical design, portraits, name, story or abilities. Noe, Severin, guards and other NPCs retain their established procedural figures. A failed character download falls back to ZAY's procedural model. Replace `HERO.url` and clip mappings in `hero3d.js` when the custom model is ready; see `docs/graphics/major-overhaul.md`. The Blender/MPFB2 modeling guide remains in `docs/characters-with-mpfb2.md`.
+- **Lighting and quality:** Options → Scene lighting selects Night, Dusk or Day, with generated skies, environment lighting, fog and wet-surface response. These are visual previews; stealth still uses the existing night rules. Low quality reduces resolution, local lights, distant decorations and mist, and disables directional shadows. Settings persist on this device.
 - **Night look (phase 1):** warm lantern light against cool shadows, real cobbles with relief, lantern halos and light pools, glowing framed windows, soft lantern-aware shadows and low mist, drawn by `light3d.js` with no extra image files. See `docs/graphics/night-lighting-phase1.md` for the before/after pictures, the tone-mapping comparison and the performance numbers.
 - **Polish pass:** iron galleries on street-facing windows, garden plants, static moon shadows and animated river highlights above the painted ground. Static character parts are batched; district rebuilds dispose their GPU resources. See `docs/graphics/third-person-polish.md` for provenance, validation and remaining work.
 - **No WebGL:** if the device can't run 3D, the game stays in Classic and Options says so.
@@ -237,6 +238,9 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `traversal.js` — tested velocity and camera-clearance math
 - `render3d.js` — the third-person 3D view (Three.js)
 - `light3d.js` — the 3D night look: generated cobble, glow, shadow and mist textures
+- `world-art3d.js` — generated plaster/wetness, sky/environment lighting, instanced facade and foliage detail
+- `hero3d.js` — replaceable ZAY asset configuration and animation controller
+- `models/zay/` — KayKit CC0 temporary rogue GLB and original license
 - `vendor/three/` — Three.js r169 (MIT), plus its GLTF loader in `addons/`
 - `models/props.glb` — CC0 market stalls, stools and kegs (Polygonal Mind)
 - `battle.js` — Final Fantasy-style battles (ATB gauges, commands, help window, victory screen)
@@ -254,20 +258,8 @@ PLAYWRIGHT_MODULE=/absolute/path/to/playwright-core CHROME_PATH=/absolute/path/t
 
 The suite starts its own localhost server and writes screenshots/results under `work/playtest/` (override with `TEST_ARTIFACTS`). It uses keyboard/pointer controls plus deterministic scene fixtures; it is not a complete campaign playthrough. Physical controllers and real mobile GPUs remain unverified.
 
-`vercel.json` disables automatic Git deployments only for `feat/third-person-polish`, so review can happen before deployment approval. It does not alter login protection or the production branch.
-
-## Preview
-
-Stable preview link (needs your Vercel login): https://bellemorne-rogue-game-preview-andrerlaster-lgtms-projects.vercel.app
-
-To update it, run `npm run deploy`, then point the stable link at the new deployment:
-
-```bash
-vercel alias set <new-deployment-url> bellemorne-rogue-game-preview-andrerlaster-lgtms-projects.vercel.app --scope andrerlaster-lgtms-projects
-```
-
-The project's very first deploy (2026-10-03) went to production by Vercel's default for new projects. Its public aliases (`bellemorne-rogue-game.vercel.app` and the team alias) were removed right away, so only the login-protected preview is in use.
+`vercel.json` disables automatic Git deployments for `feat/third-person-polish` and `feat/major-graphics-overhaul`, so review can happen before deployment approval. It does not alter login protection or the production branch.
 
 ## Deploying
 
-Pushing to `main` on `andrerlaster-lgtm/RPG-Game` deploys this game to the `bellemorne-rogue-game` Vercel project. The project is login-protected for every deployment (Vercel Authentication: all), so the game is not public. Check the result in the LasterLab studio under Deploy Check.
+The owner merges the reviewed branch. Pushing to `main` on `andrerlaster-lgtm/RPG-Game` deploys this game to the `bellemorne-rogue-game` Vercel project. Keep every deployment login-protected. Follow `AGENTS.md`: do not run manual deploy/promote/alias commands, publish preview links, or change project protection settings. Check the result in the private LasterLab studio under Deploy Check after a merge.
