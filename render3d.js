@@ -14,6 +14,7 @@ import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
 import { makeFigures } from './figure3d.js';
 import { makeSky, makeSkylineTexture, makeSkyline, makeMotes, nightAt, newNight } from './sky3d.js';
 import { makePost } from './post3d.js';
+import { makeWorldKit, STOREY, WATER_Y } from './world3d.js';
 import { makeCobbles, makeTint, withTint, makeGlow, makeWindow, makeBlob, makeMist } from './light3d.js';
 
 const S = 1 / TILE;
@@ -207,71 +208,11 @@ if (renderer) {
   };
 
   // ---------- Textures ----------
-  const wallTex = canvasTex(64, 160, (c, w, h) => {
-    c.fillStyle = '#6e5462'; c.fillRect(0, 0, w, h);
-    for (let y = 0; y < h; y += 10) {
-      const off = (y / 10) % 2 ? 0 : 16;
-      for (let x = -16; x < w; x += 32) {
-        const v = 92 + ((x * 7 + y * 13) % 17);
-        c.fillStyle = `rgb(${v + 14},${v - 10},${v + 2})`;
-        c.fillRect(x + off + 1, y + 1, 30, 8);
-      }
-    }
-    c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(0, h - 12, w, 12);              // damp at the foot of the wall
-    c.fillStyle = '#6d5326'; c.fillRect(0, 0, w, 5);                           // gold trim under the eaves
-  });
-  const roofTex = canvasTex(64, 64, (c, w, h) => {
-    c.fillStyle = '#2e2a3a'; c.fillRect(0, 0, w, h);
-    c.fillStyle = 'rgba(255,255,255,.06)';
-    for (let y = 6; y < h; y += 12) c.fillRect(0, y, w, 2);
-    c.fillStyle = 'rgba(0,0,0,.25)';
-    for (let y = 0; y < h; y += 12) for (let x = (y / 12) % 2 ? 0 : 8; x < w; x += 16) c.fillRect(x, y, 2, 12);
-  });
-  // Timber-framed plaster (most of the city), after the half-timbered houses in the Polygonal Mind pack.
-  const timberTex = canvasTex(64, 154, (c, w, h) => {
-    c.fillStyle = '#b5a07c'; c.fillRect(0, 0, w, h);
-    for (let k = 0; k < 140; k++) { c.fillStyle = `rgba(${k % 2 ? '70,50,30' : '255,240,210'},.06)`; c.fillRect((k * 37) % w, (k * 53) % h, 6, 4); }
-    c.fillStyle = '#3a2618';
-    c.fillRect(0, 0, 6, h); c.fillRect(w - 6, 0, 6, h);                         // posts
-    c.fillRect(0, 0, w, 7); c.fillRect(0, 70, w, 6); c.fillRect(0, h - 10, w, 10);   // sill, floor beam, eaves
-    c.lineWidth = 5; c.strokeStyle = '#3a2618';
-    c.beginPath(); c.moveTo(6, 76); c.lineTo(w - 6, h - 12); c.moveTo(6, 70); c.lineTo(w / 2, 7); c.stroke();   // braces
-    c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(0, h - 14, w, 4);
-  });
-  // Pale cut stone for House Veyrane's estate.
-  const stoneTex = canvasTex(64, 154, (c, w, h) => {
-    c.fillStyle = '#6f6a72'; c.fillRect(0, 0, w, h);
-    for (let y = 0, row = 0; y < h; y += 14, row++) for (let x = row % 2 ? -16 : 0; x < w; x += 32) {
-      const v = 128 + ((x * 11 + y * 7) % 19);
-      c.fillStyle = `rgb(${v},${v - 4},${v + 6})`; c.fillRect(x + 1, y + 1, 30, 12);
-    }
-    c.fillStyle = '#8a6a32'; c.fillRect(0, 0, w, 5);
-    c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(0, h - 10, w, 10);
-  });
-  const slopeTex = (base, line) => {
-    const t = canvasTex(64, 64, (c, w, h) => {
-      c.fillStyle = base; c.fillRect(0, 0, w, h);
-      for (let y = 0; y < h; y += 8) {
-        c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(0, y, w, 2);
-        for (let x = (y / 8) % 2 ? 0 : 8; x < w; x += 16) c.fillRect(x, y, 2, 8);
-        c.fillStyle = line; c.fillRect(0, y + 2, w, 1);
-      }
-    });
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    return t;
-  };
-  const wallMat = new THREE.MeshLambertMaterial({ map: wallTex, color: 0xcfc4cc });   // a touch less red under the tone mapper
-  const roofMat = new THREE.MeshLambertMaterial({ map: roofTex });
-  const WALLS = { brick: wallMat, timber: new THREE.MeshLambertMaterial({ map: timberTex }), stone: new THREE.MeshLambertMaterial({ map: stoneTex }) };
-  const SLOPES = [
-    new THREE.MeshLambertMaterial({ map: slopeTex('#3a3a4c', 'rgba(255,255,255,.08)'), side: THREE.DoubleSide }),   // slate
-    new THREE.MeshLambertMaterial({ map: slopeTex('#2f4a3c', 'rgba(200,255,220,.08)'), side: THREE.DoubleSide }),   // old copper
-    new THREE.MeshLambertMaterial({ map: slopeTex('#5a3328', 'rgba(255,200,170,.08)'), side: THREE.DoubleSide })    // clay tile
-  ];
   // Night-look textures, drawn once (see light3d.js).
   const cobbles = makeCobbles({ maxAniso: Math.min(4, renderer.capabilities.getMaxAnisotropy()) });
   const glowTex = makeGlow(), windowTex = makeWindow(), blobTex = makeBlob(), mistTex = makeMist();
-  const SHARED_TEX = new Set([skylineTex, wallTex, roofTex, timberTex, stoneTex, cobbles.albedo, glowTex, windowTex, blobTex, mistTex, ...SLOPES.map((m) => m.map)]);
+  const KIT = makeWorldKit({ glowTex, maxAniso: Math.min(4, renderer.capabilities.getMaxAnisotropy()) });
+  const SHARED_TEX = new Set([...KIT.textures, skylineTex, cobbles.albedo, cobbles.normal, glowTex, windowTex, blobTex, mistTex]);
   let tintTex = null;
   let MIST = [];
   const addMat = (map, color, opacity) => new THREE.MeshBasicMaterial({ map, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -286,20 +227,20 @@ if (renderer) {
   // ---------- The district (rebuilt whenever a new map loads) ----------
   let world = null, builtFor = null;
   setQuality(SETTINGS.quality);
-  let LABEL_SPRITES = [], EXIT_MARKS = [];
+  let LABEL_SPRITES = [], EXIT_MARKS = [], BOAT_MESH = null;
   function build() {
     if (world) {
       scene.remove(world);
       world.traverse((o) => {
         if (o.userData.keep) return;   // shared with the loaded models
-        if (o.geometry) o.geometry.dispose();
+        if (o.geometry && !o.geometry.userData.keepGeo) o.geometry.dispose();
         const tex = o.material && !Array.isArray(o.material) && o.material.map;
         if (tex && !SHARED_TEX.has(tex)) tex.dispose();
       });
     }
     world = new THREE.Group();
     builtFor = LEVEL;
-    LABEL_SPRITES = []; EXIT_MARKS = [];
+    LABEL_SPRITES = []; EXIT_MARKS = []; BOAT_MESH = null;
 
     // Ground: the same painted map as the Classic view.
     const groundTex = new THREE.CanvasTexture(mapCanvas);
@@ -311,11 +252,6 @@ if (renderer) {
     hemi.color.copy(mood.sky); hemi.groundColor.copy(mood.ground); hemi.intensity = mood.k;
     if (tintTex) tintTex.dispose();
     tintTex = makeTint({ grid, W, H, props: PROPS, TILE });
-    const ground = mesh(new THREE.PlaneGeometry(W, H), withTint(new THREE.MeshLambertMaterial({ map: groundTex }), tintTex), W / 2, 0, H / 2);
-    ground.geometry.setAttribute('tintUv', ground.geometry.attributes.uv.clone());
-    ground.rotation.x = -Math.PI / 2;
-    ground.userData.noCast = true;
-    world.add(ground);
     // Cobbled streets: the street tiles get real cobbles with relief (normal map) and a little lantern sheen,
     // over the painted ground, which stays underneath for everything else (doorsteps, grass, wooden floors).
     {
@@ -341,54 +277,38 @@ if (renderer) {
         world.add(cob);
       }
     }
-    const beyond = mesh(new THREE.PlaneGeometry(W + 80, H + 80), lambert(0x0b0a10), W / 2, -0.02, H / 2);
+    // Buildings, ground, river and plants (world3d.js).
+    const district = DISTRICTS[state.district] || {};
+    const town = KIT.build(world, { grid, W, H, TILE, EDGES, TREES, LAMPS, estate: district.look === 'rogue', indoors, veg: Q.veg,
+      town: indoors || district.look === 'rogue' ? 0 : state.district === 'lantern' ? 1 : 0.5, groundTex, tintTex });
+    TOPS = town.TOPS;
+    const beyond = mesh(new THREE.PlaneGeometry(W + 160, H + 160), lambert(0x0b0a10), W / 2, town.hasWater ? WATER_Y - 0.12 : -0.02, H / 2);
     beyond.rotation.x = -Math.PI / 2;
     beyond.userData.noCast = true;
     world.add(beyond);
     if (!indoors) world.add(makeSkyline(skylineTex, W, H));
-
-    // Buildings: one box per building tile, all in a single instanced draw.
-    const solid = [];
-    const hedges = [];
-    const water = [];
-    for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
-      const t = grid[ty][tx];
-      if (t === '#') solid.push([tx, ty]);
-      else if (t === 'h') hedges.push([tx, ty]);
-      else if (t === 'w') water.push([tx, ty]);
-    }
     const m4 = new THREE.Matrix4();
-    if (solid.length) buildBlocks(m4);
-    if (hedges.length) {
-      const bush = new THREE.IcosahedronGeometry(0.55, 1);
-      const hm = new THREE.InstancedMesh(bush, lambert(0x2a5233), hedges.length);
-      const q = new THREE.Quaternion(), sc = new THREE.Vector3(1, 0.75, 1);
-      hedges.forEach(([tx, ty], i) => hm.setMatrixAt(i, m4.compose(new THREE.Vector3(tx + 0.5, 0.38, ty + 0.5), q, sc)));
-      world.add(hm);
-    }
-    if (water.length) {
-      const wm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ color: 0x1c3a66, transparent: true, opacity: 0.45 }), water.length);
-      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), one = new THREE.Vector3(1, 1, 1);
-      water.forEach(([tx, ty], i) => wm.setMatrixAt(i, m4.compose(new THREE.Vector3(tx + 0.5, -0.05, ty + 0.5), q, one)));
-      world.add(wm);
-    }
 
     // Windows on street-facing walls: warm lit panes or dark shutters.
     const lit = [], shut = [];
     for (const e of EDGES) if (e.win) (e.win.lit ? lit : shut).push(e);
     const ROT = { s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 };
     const NORMAL = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] };
-    const pane = new THREE.PlaneGeometry(0.26, 0.4);
+    const pane = new THREE.PlaneGeometry(0.3, 0.44);
+    pane.translate(0, 0, 0.028);
+    const frameGeo = new THREE.BoxGeometry(0.4, 0.54, 0.05), sillGeo = new THREE.BoxGeometry(0.46, 0.05, 0.12);
     const paneMat = new THREE.MeshBasicMaterial({ map: windowTex });
     const haloGeo = new THREE.PlaneGeometry(0.78, 0.98), flatGeo = new THREE.PlaneGeometry(1, 1);
     const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
     const warm = new THREE.Color();
     for (const [list, mat] of [[lit, paneMat], [shut, lambert(0x3a2618)]]) {
-      if (!list.length) continue;
+      if (!list.length || indoors) continue;   // a room's walls have no street windows
       const isLit = list === lit;
-      const im = new THREE.InstancedMesh(pane, mat, list.length * 2);
+      const floors = list.map((e) => town.storeysAt(e)), total = floors.reduce((a, b) => a + b, 0);
+      const im = new THREE.InstancedMesh(pane, mat, total);
+      const frames = [];
       // Lit windows also get a soft glow around the glass and a pool of light on the street in front of them.
-      const halo = isLit ? new THREE.InstancedMesh(haloGeo, addMat(glowTex, 0xff8f2e, 0.55), list.length * 2) : null;
+      const halo = isLit ? new THREE.InstancedMesh(haloGeo, addMat(glowTex, 0xff8f2e, 0.55), total) : null;
       const pool = isLit ? new THREE.InstancedMesh(flatGeo, addMat(glowTex, 0xff8f2e, 0.2), list.length) : null;
       const q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
       let i = 0, j = 0;
@@ -397,11 +317,16 @@ if (renderer) {
         q.setFromAxisAngle(up, ROT[e.side]);
         const cx = (e.x0 + e.x1) / 2 * S + nx * 0.01, cz = (e.y0 + e.y1) / 2 * S + nz * 0.01;
         const hsh = ((Math.round(cx * 31) * 73856093) ^ (Math.round(cz * 31) * 19349663)) >>> 0;
-        for (const y of [0.95, 1.75]) {
+        const n = town.storeysAt(e);
+        for (let fl = 0; fl < n; fl++) {
+          const y = 0.76 + fl * STOREY;
+          // a door takes the place of the ground-floor window on that wall
+          if (fl === 0 && town.doorEdges.has(e)) { im.setMatrixAt(i, m4.makeScale(0, 0, 0)); if (isLit) halo.setMatrixAt(i, m4.makeScale(0, 0, 0)); i++; continue; }
           im.setMatrixAt(i, m4.compose(new THREE.Vector3(cx, y, cz), q, one));
+          frames.push([cx, y, cz, ROT[e.side]]);
           if (isLit) {
             // each window a slightly different warmth and brightness (candle, lamp, hearth)
-            const k = ((hsh >>> (y > 1 ? 4 : 0)) % 100) / 100;
+            const k = ((hsh >>> (fl * 4)) % 100) / 100;
             warm.setRGB(0.62 + 0.38 * k, 0.5 + 0.4 * k * k, 0.3 + 0.3 * k);
             im.setColorAt(i, warm);
             halo.setMatrixAt(i, m4.compose(new THREE.Vector3(cx + nx * 0.012, y, cz + nz * 0.012), q, one));
@@ -409,9 +334,21 @@ if (renderer) {
           }
           i++;
         }
-        if (isLit) { pool.setMatrixAt(j++, m4.compose(new THREE.Vector3(cx + nx * 0.85, 0.011, cz + nz * 0.85), flat, new THREE.Vector3(2.3, 2.3, 1))); }
+        if (isLit) { pool.setMatrixAt(j++, n ? m4.compose(new THREE.Vector3(cx + nx * 0.85, 0.011, cz + nz * 0.85), flat, new THREE.Vector3(2.3, 2.3, 1)) : m4.makeScale(0, 0, 0)); }
       }
       world.add(im);
+      // A timber frame and a stone sill round every window, so the glass sits in the wall instead of on it.
+      if (frames.length) {
+        const fm = new THREE.InstancedMesh(frameGeo, lambert(0x2a1a12), frames.length), sm = new THREE.InstancedMesh(sillGeo, lambert(0x8a857c), frames.length);
+        const eu = new THREE.Euler();
+        frames.forEach(([x, y, z, r], k) => {
+          q.setFromEuler(eu.set(0, r, 0));
+          fm.setMatrixAt(k, m4.compose(new THREE.Vector3(x, y, z), q, one));
+          sm.setMatrixAt(k, m4.compose(new THREE.Vector3(x, y - 0.27, z), q, one));
+        });
+        fm.userData.noCast = sm.userData.noCast = true;
+        world.add(fm, sm);
+      }
       if (isLit) {
         if (im.instanceColor) im.instanceColor.needsUpdate = true;
         if (halo.instanceColor) halo.instanceColor.needsUpdate = true;
@@ -499,7 +436,8 @@ if (renderer) {
     // The river boat.
     if (BOAT.x > -1e4) {
       const boat = new THREE.Group();
-      boat.position.set(BOAT.x * S, 0, BOAT.y * S);
+      boat.position.set(BOAT.x * S, tileAt(BOAT.x, BOAT.y) === 'w' ? WATER_Y + 0.02 : 0, BOAT.y * S);
+      BOAT_MESH = boat;
       boat.add(mesh(new THREE.BoxGeometry(2, 0.3, 0.8), lambert(0x4a3523), 0, 0.05, 0));
       boat.add(mesh(new THREE.BoxGeometry(1.8, 0.05, 0.6), lambert(0x2a1d12), 0, 0.22, 0));
       boat.add(mesh(new THREE.SphereGeometry(0.08), glowMat(0xffc670), 0.8, 0.6, 0));
@@ -537,93 +475,6 @@ if (renderer) {
     for (const m of allMarks) { scene.remove(m); m.material.map.dispose(); }
     allCones.clear(); allMarks.clear();
     snapCamera = true;
-  }
-
-  // ---------- Buildings ----------
-  // The building tiles are split into rectangles. Each one gets a wall finish (timber frame, brick, or
-  // stone on the estate) and, if it's at least two tiles deep, a pitched roof along its long side.
-  // One-tile-thick walls (like the inside of the Crooked Halo) stay flat-topped.
-  function buildRects() {
-    const used = new Uint8Array(W * H), rects = [];
-    const isB = (x, y) => x < W && y < H && grid[y][x] === '#' && !used[y * W + x];
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      if (!isB(x, y)) continue;
-      let w = 1; while (w < 12 && isB(x + w, y)) w++;
-      let h = 1; while (h < 12 && [...Array(w).keys()].every((i) => isB(x + i, y + h))) h++;
-      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) used[(y + j) * W + x + i] = 1;
-      rects.push({ x, y, w, h });
-    }
-    return rects;
-  }
-  function buildBlocks(m4) {
-    const estate = (DISTRICTS[state.district] || {}).look === 'rogue';
-    const rects = buildRects();
-    TOPS = new Float32Array(W * H);
-    const hash = (r) => ((r.x * 73856093) ^ (r.y * 19349663) ^ (r.w * 83492791)) >>> 0;
-    const tiles = { brick: [], timber: [], stone: [] };
-    const gables = { brick: [], timber: [], stone: [] };
-    const slopes = SLOPES.map(() => []);
-    const O = 0.14;   // eaves overhang
-    for (const r of rects) {
-      const hv = hash(r);
-      const finish = estate ? 'stone' : hv % 5 < 3 ? 'timber' : 'brick';
-      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) { tiles[finish].push([r.x + i, r.y + j]); TOPS[(r.y + j) * W + r.x + i] = WALL_H; }
-      if (Math.min(r.w, r.h) < 2) continue;
-      // Ridge along the long side; the roof rises half the short side (capped), like a steep city roof.
-      const alongX = r.w >= r.h;
-      const span = alongX ? r.h : r.w, len = alongX ? r.w : r.h;
-      const pitch = Math.min(1.1, span * 0.42);
-      const y0 = WALL_H - 0.02, y1 = WALL_H + pitch;
-      // In local terms: a runs along the ridge, b across it.
-      const P = (a, b, y) => alongX ? [r.x + a, y, r.y + b] : [r.x + b, y, r.y + a];
-      const sl = slopes[estate ? 0 : hv % 3];
-      const slopeLen = Math.hypot(span / 2 + O, pitch);
-      for (const [b0, b1] of [[-O, span / 2], [span + O, span / 2]]) {
-        const q = [P(-O, b0, y0 - O * 0.4), P(len + O, b0, y0 - O * 0.4), P(len + O, b1, y1), P(-O, b1, y1)];
-        sl.push({ q, u: len + 2 * O, v: slopeLen });
-      }
-      for (const a of [0, len]) gables[finish].push([P(a, 0, y0), P(a, span, y0), P(a, span / 2, y1)]);
-      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) {
-        const b = alongX ? j + 0.5 : i + 0.5;
-        TOPS[(r.y + j) * W + r.x + i] = WALL_H + pitch * (1 - Math.abs(b - span / 2) / (span / 2));
-      }
-    }
-    const box = new THREE.BoxGeometry(1, WALL_H, 1);
-    for (const [finish, list] of Object.entries(tiles)) {
-      if (!list.length) continue;
-      const mat = WALLS[finish];
-      const im = new THREE.InstancedMesh(box, [mat, mat, roofMat, roofMat, mat, mat], list.length);
-      list.forEach(([tx, ty], i) => im.setMatrixAt(i, m4.makeTranslation(tx + 0.5, WALL_H / 2, ty + 0.5)));
-      world.add(im);
-    }
-    // Roof slopes: quads with the slate texture repeating every unit.
-    slopes.forEach((list, k) => {
-      if (!list.length) return;
-      const pos = [], uv = [];
-      for (const { q, u, v } of list) {
-        const [a, b, c, d] = q;
-        pos.push(...a, ...b, ...c, ...a, ...c, ...d);
-        uv.push(0, 0, u, 0, u, v, 0, 0, u, v, 0, v);
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      g.computeVertexNormals();
-      world.add(new THREE.Mesh(g, SLOPES[k]));
-    });
-    // Gable ends, in the same finish as the walls below them.
-    for (const [finish, list] of Object.entries(gables)) {
-      if (!list.length) continue;
-      const pos = [], uv = [];
-      for (const [a, b, c] of list) { pos.push(...a, ...b, ...c); uv.push(0, 0.05, 1, 0.05, 0.5, 0.5); }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      g.computeVertexNormals();
-      const mat = WALLS[finish].clone();
-      mat.side = THREE.DoubleSide;
-      world.add(new THREE.Mesh(g, mat));
-    }
   }
 
   // ---------- CC0 models (models/props.glb, Polygonal Mind, see THIRD_PARTY_NOTICES.md) ----------
@@ -1055,6 +906,7 @@ if (renderer) {
 
     // Lamps: give the real lights to the nearest few, with the same gentle flicker as Classic.
     const near = LAMPS.map((l) => [l, Math.hypot(l.x - p.x, l.y - p.y)]).sort((a, b) => a[1] - b[1]);
+    for (let i = 0; i < 6; i++) nearLamps[i] = near[i] ? [near[i][0].x * S, near[i][0].y * S] : null;
     const flick = 1 + Math.sin(t * 9) * 0.04;
     LIGHTS.forEach((L, i) => {
       const l = near[i] && near[i][0];
@@ -1085,6 +937,7 @@ if (renderer) {
   // The air each frame: where the night has got to (sky, haze, moonlight), the moon's shadow following ZAY,
   // and how tense things are (the red edge when guards are on you).
   let alertS = 0, hiddenS = 0;
+  const nearLamps = [];
   const shadowAt = new THREE.Vector3();
   function atmosphere(dt, p) {
     nightClock += dt;
@@ -1101,6 +954,8 @@ if (renderer) {
     moon.target.position.copy(shadowAt);
     moon.position.copy(shadowAt).addScaledVector(NIGHT.dir, 45);
     MOON_AWAY.set(-NIGHT.dir.x, -NIGHT.dir.z).normalize();
+    KIT.tick(nightClock, NIGHT, nearLamps, renderer.getPixelRatio() * (window.innerHeight / 720));
+    if (BOAT_MESH && BOAT_MESH.position.y < 0) { BOAT_MESH.position.y = WATER_Y + 0.02 + Math.sin(nightClock * 1.1) * 0.015; BOAT_MESH.rotation.z = Math.sin(nightClock * 0.8) * 0.025; }
     MOTES.uniforms.uTime.value = nightClock; MOTES.uniforms.uCam.value.copy(camera.position);
     MOTES.uniforms.uSize.value = 26 * renderer.getPixelRatio() * (window.innerHeight / 720);
     const k = Math.min(1, dt * 3);
