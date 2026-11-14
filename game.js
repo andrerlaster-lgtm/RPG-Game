@@ -29,7 +29,8 @@ let LABELS = [];
 let NPCS = [];
 let WALKERS = [];
 let PROPS = [];
-let FURN = new Set();   // tiles blocked by furniture (props)
+let FURN = new Set();   // tiles blocked by furniture (props) and trees
+let TREES = [];         // trees planted by plantTrees(): { x, y, paved }
 const BOAT = { x: 0, y: 0 };
 const KID = { x: 0, y: 0, helped: false };
 const LEDGER_SPOT = { x: 0, y: 0 };
@@ -115,7 +116,45 @@ function buildLevel(map) {
       for (let tx = Math.floor(pr.x / TILE); tx <= Math.floor((pr.x + pr.w - 1) / TILE); tx++) FURN.add(ty * W + tx);
   }
   GUARD_ROUTES = of('guard').map((o) => ({ kind: prop(o, 'kind', 'guard'), pts: line(o), escort: prop(o, 'escort', '') }));
+  plantTrees(objects);
   renderMap();
+}
+
+// Trees: planted by rule rather than drawn in Tiled, so every district gets some without editing its map.
+// A tree takes a whole tile and is solid (it joins FURN, so guards path round it too). It only goes where it
+// can't be in anyone's way: on garden tiles with open ground all round, or in the middle of a wide square,
+// and never near a Tiled object (lamps, people, chests, exits, spawns, furniture) or a patrol or walking route.
+function plantTrees(objects) {
+  TREES = [];
+  const open = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H && !solidTile(grid[ty][tx]) && !FURN.has(ty * W + tx);
+  const segDist = (px, py, a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / l2));
+    return Math.hypot(px - a.x - dx * t, py - a.y - dy * t);
+  };
+  const clearOf = (px, py) => objects.every((o) => {
+    if (o.polyline || o.polygon) {
+      const pts = (o.polyline || o.polygon).map((q) => ({ x: o.x + q.x, y: o.y + q.y }));
+      for (let i = 0; i < pts.length; i++) if (segDist(px, py, pts[i], pts[Math.min(pts.length - 1, i + 1)]) < 44) return false;
+      return o.polygon ? segDist(px, py, pts[pts.length - 1], pts[0]) >= 44 : true;
+    }
+    const w = o.width || 0, h = o.height || 0;
+    const nx = Math.max(o.x, Math.min(px, o.x + w)), ny = Math.max(o.y, Math.min(py, o.y + h));
+    return Math.hypot(px - nx, py - ny) >= 60;
+  });
+  for (let ty = 2; ty < H - 2; ty++) for (let tx = 2; tx < W - 2; tx++) {
+    const t = grid[ty][tx];
+    if (t !== 'g' && t !== '.') continue;
+    const paved = t === '.', reach = paved ? 2 : 1, gap = paved ? 5 : 2.6;
+    const hv = (Math.imul(tx + 3, 7349) ^ Math.imul(ty + 5, 3571)) >>> 0;
+    if (hv % (paved ? 2 : 3) !== 0) continue;
+    let ok = true;
+    for (let j = -reach; j <= reach && ok; j++) for (let i = -reach; i <= reach; i++) if (!open(tx + i, ty + j) || (paved && grid[ty + j][tx + i] !== '.')) { ok = false; break; }
+    const c = centre(tx, ty);
+    if (!ok || TREES.some((q) => Math.hypot(q.x - c.x, q.y - c.y) < gap * TILE) || !clearOf(c.x, c.y)) continue;
+    TREES.push({ x: c.x, y: c.y, paved });
+  }
+  for (const q of TREES) FURN.add(Math.floor(q.y / TILE) * W + Math.floor(q.x / TILE));
 }
 
 // ---------- Canvas ----------
@@ -234,6 +273,15 @@ function renderMap() {
     }
   }
   for (const sh of SHADOWS) { m.fillStyle = sh.g; m.fillRect(...sh.rect); }
+  // Trees: a stone bed (in a square) or bare earth (in a garden), and a soft shadow under the crown.
+  for (const q of TREES) {
+    const sh = m.createRadialGradient(q.x, q.y, 6, q.x, q.y, 34);
+    sh.addColorStop(0, 'rgba(0,0,0,.5)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+    m.fillStyle = sh; m.fillRect(q.x - 34, q.y - 34, 68, 68);
+    m.fillStyle = q.paved ? '#4a4852' : '#2a2018'; m.beginPath(); m.arc(q.x, q.y, 15, 0, Math.PI * 2); m.fill();
+    m.fillStyle = '#241a12'; m.beginPath(); m.arc(q.x, q.y, 11, 0, Math.PI * 2); m.fill();
+    m.fillStyle = '#3a2a20'; m.beginPath(); m.arc(q.x, q.y, 5, 0, Math.PI * 2); m.fill();
+  }
   // Hedges drawn as round bushes on top of the garden.
   for (let ty = 0; ty < H; ty++) for (let tx = 0; tx < W; tx++) {
     if (grid[ty][tx] !== 'h') continue;
@@ -1051,6 +1099,7 @@ function render() {
   drawWater();
   drawFurniture();
   drawProps();
+  // Tree crowns, seen from above (see plantTrees).
   for (const g of state.guards) if (inView(g.x, g.y)) drawCone(g);
   for (const g of state.guards) if (inView(g.x, g.y)) drawGuard(g);
   drawNpcs();
@@ -1590,6 +1639,7 @@ function frame(now) {
     }
   }
   if (state.paused || state.mode !== 'field') { state.player.vx = state.player.vy = 0; }
+  drawMinimap();
   pressed.clear();
   const field3d = !!LEVEL && state.mode !== 'battle' && use3D();
   show3D(field3d);

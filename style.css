@@ -153,6 +153,19 @@ kbd { padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.1); fo
 .hp-bar i { display: block; height: 100%; background: var(--meter-hp); transform-origin: left; transition: transform .25s; }
 .hp-text { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 
+/* Minimap and the district name card */
+.minimap { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 52px); right: 14px; width: 148px; height: 148px; border-radius: 50%; border: 2px solid rgba(233,182,90,.55); box-shadow: 0 4px 18px rgba(0,0,0,.6), inset 0 0 0 1px rgba(0,0,0,.6); background: #0b0c16; opacity: .92; }
+.minimap[hidden] { display: none; }
+.banner { position: fixed; z-index: 25; left: 0; right: 0; top: 17%; display: grid; justify-items: center; gap: 4px; pointer-events: none; opacity: 0; text-align: center; }
+.banner[hidden] { display: none; }
+.banner.is-on { animation: banner-in 3.4s ease both; }
+.banner-title { font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 4.6vw, 46px); letter-spacing: .08em; color: var(--color-primary-text); text-shadow: 0 2px 14px rgba(0,0,0,.9), 0 0 30px rgba(233,182,90,.25); }
+.banner-title::after { content: ''; display: block; height: 2px; margin: 8px auto 0; width: min(320px, 60vw); background: linear-gradient(90deg, transparent, rgba(233,182,90,.9), transparent); }
+.banner-sub { font-weight: 600; font-size: 13px; letter-spacing: .28em; text-transform: uppercase; color: #c9c2ae; text-shadow: 0 1px 6px #000; }
+@keyframes banner-in { 0% { opacity: 0; transform: translateY(8px); } 14% { opacity: 1; transform: none; } 78% { opacity: 1; } 100% { opacity: 0; } }
+@media (max-width: 860px), (pointer: coarse) { .minimap { width: 104px; height: 104px; } }
+@media (prefers-reduced-motion: reduce) { .banner.is-on { animation: none; opacity: 1; } }
+
 /* Toasts */
 .toast { position: fixed; z-index: 30; left: 50%; top: 22%; transform: translateX(-50%); max-width: min(520px, calc(100vw - 32px)); padding: 10px 16px; border-radius: var(--radius-md); background: rgba(7,8,15,.86); color: var(--color-text); font-weight: 600; text-align: center; pointer-events: none; box-shadow: var(--shadow-pop); }
 

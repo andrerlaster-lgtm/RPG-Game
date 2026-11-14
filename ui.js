@@ -14,7 +14,7 @@ fillIcons();
 
 // ---------- Settings (kept on this device) ----------
 const SETTINGS_KEY = 'bellemorne-settings-v1';
-const SETTINGS = { volume: 0.7, music: 0.6, cones: true, shake: true, battleSpeed: 1, view: '3d', lighting: 'night', quality: 'high' };
+const SETTINGS = { volume: 0.7, music: 0.6, cones: true, shake: true, battleSpeed: 1, view: '3d', lighting: 'night', quality: 'auto' };
 try {
   const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
   if (saved && typeof saved === 'object') {
@@ -25,7 +25,7 @@ try {
     if ([0.7, 1, 1.4].includes(saved.battleSpeed)) SETTINGS.battleSpeed = saved.battleSpeed;
     if (['3d', 'classic'].includes(saved.view)) SETTINGS.view = saved.view;
     if (['night','dusk','day'].includes(saved.lighting)) SETTINGS.lighting = saved.lighting;
-    if (['low','high'].includes(saved.quality)) SETTINGS.quality = saved.quality;
+    if (['auto','low','high'].includes(saved.quality)) SETTINGS.quality = saved.quality;
   }
 } catch { /* settings fall back to defaults */ }
 function saveSettings() {
