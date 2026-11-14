@@ -1,23 +1,22 @@
 // ZAY's replaceable visual rig. Gameplay position, collisions and story live outside this module.
 import * as THREE from './vendor/three/three.module.min.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
-export const HERO = {
-  url: 'models/zay/zay-mock.glb', height: 1.3, rotationY: Math.PI / 2,
-  hide: [], centerXZ: false, preserveMaterials: true, probeBones: { leg: 'thigh_l', root: 'Root' },
-  clips: { idle: 'Idle', walk: 'Walking_A', run: 'Running_A', dodge: 'Dodge_Forward', throw: 'Throw', attack: 'Dualwield_Melee_Attack_Slice', interact: 'Interact' },
-  // Clips should be in place. Add root-node names here for custom files with horizontal root motion.
-  rootMotionNodes: ['Root'], fade: 0.16,
-  durations: { dodge: 0.17, throw: 0.45, attack: 0.55 }
-};
+import { HERO } from './hero-config.js';
+export { HERO };
 export async function loadHero(config = HERO) {
   const gltf = await new GLTFLoader().loadAsync(config.url);
   const model = gltf.scene;
   config.hide.forEach(name => { const o = model.getObjectByName(name); if (o) o.visible = false; });
+  // Evaluate the configured idle before measuring: exported files may open mid-action.
+  const measureMixer = new THREE.AnimationMixer(model);
+  const idleClip = THREE.AnimationClip.findByName(gltf.animations, config.clips.idle);
+  if (idleClip) { measureMixer.clipAction(idleClip).play(); measureMixer.update(0); }
   model.updateMatrixWorld(true);
   // Measure only the visible skinned body; hidden weapons must not affect normalization.
   const box = new THREE.Box3();
   model.traverseVisible(o => { if (o.isSkinnedMesh) box.union(new THREE.Box3().setFromObject(o)); });
   if (box.isEmpty() || box.getSize(new THREE.Vector3()).y <= 0) throw new Error('Character has no skinned body');
+  measureMixer.stopAllAction(); measureMixer.uncacheRoot(model);
   const size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
   const scale = config.height / size.y;
   const pivot = new THREE.Group(); pivot.rotation.y = config.rotationY; pivot.scale.setScalar(scale);
@@ -34,17 +33,18 @@ export async function loadHero(config = HERO) {
     }
     actions[role] = mixer.clipAction(local);
   }
-  let current = null, shot = null, remaining = 0, lastDash = false;
+  let current = null, currentRole = null, shot = null, remaining = 0, lastDash = false;
   function transition(role, once = false, duration = 0) {
     const next = actions[role]; if (!next || (next === current && !once)) return;
     next.reset().setEffectiveWeight(1).setEffectiveTimeScale(1).setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
     next.clampWhenFinished = once; next.play();
     if (once && duration) next.setEffectiveTimeScale(next.getClip().duration / duration);
     if (current && current !== next) next.crossFadeFrom(current, once ? Math.min(config.fade, duration * 0.35) : config.fade, false);
-    current = next;
+    current = next; currentRole = role;
   }
   const controller = {
     group,
+    setShadowCaster(enabled) { model.traverse(o => { if (o.isMesh) o.castShadow = enabled; }); },
     play(role) { if (!actions[role]) return; shot = role; remaining = config.durations?.[role] || actions[role].getClip().duration; transition(role, true, remaining); },
     reset() { mixer.stopAllAction(); current = shot = null; remaining = 0; lastDash = false; transition('idle'); },
     update(dt, speed, p) {
@@ -58,9 +58,12 @@ export async function loadHero(config = HERO) {
       }
       mixer.update(dt);
     },
-    debug() { return { loaded: true, url: config.url, clip: current?.getClip().name, clips: Object.keys(actions), weights: Object.fromEntries(Object.entries(actions).map(([k,a])=>[k,a.getEffectiveWeight()])), leg: model.getObjectByName(config.probeBones?.leg || 'upperlegl')?.quaternion.toArray(), root: model.getObjectByName(config.probeBones?.root || 'root')?.position.toArray(), time: current?.time }; }
+    debug() { return { loaded: true, url: config.url, role: currentRole, materials: materialInfo, clip: current?.getClip().name, clips: Object.keys(actions), weights: Object.fromEntries(Object.entries(actions).map(([k,a])=>[k,a.getEffectiveWeight()])), leg: model.getObjectByName(config.probeBones?.leg || 'upperlegl')?.quaternion.toArray(), root: model.getObjectByName(config.probeBones?.root || 'root')?.position.toArray(), time: current?.time }; }
   };
-  model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.receiveShadow = true; if (!config.preserveMaterials) o.material.roughness = 0.95; } });
+  const materialInfo = [];
+  model.traverse(o => { if (o.isMesh) {
+    for (const m of [o.material].flat()) materialInfo.push({ name: m.name, base: !!m.map, normal: !!m.normalMap, roughness: !!m.roughnessMap, metalness: !!m.metalnessMap, emissive: m.emissiveIntensity && m.emissive?.getHex() });
+    o.castShadow = true; o.frustumCulled = false; o.receiveShadow = true; if (!config.preserveMaterials) o.material.roughness = 0.95; } });
   group.userData.rig = controller;
   controller.reset();
   return controller;

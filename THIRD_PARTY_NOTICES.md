@@ -1,5 +1,11 @@
 # Third-party notices
 
+## Current temporary ZAY — Shadow the Rogue Assassin (custom game-use license)
+
+`models/zay/shadow-rogue.glb` incorporates the rigged character, texture maps and animation clips from [Grigory Petrov's Shadow pack](https://grigory-petrov.itch.io/shadowrogue). The creator discloses AI-assisted graphics. The archive license permits royalty-free use in games and commercial projects, prohibits raw-model resale, and makes credit optional. Original text: `models/zay/LICENSE-SHADOW.txt`. This asset is not CC0/MIT. Credit: **Rogue Assassin by Grigory Petrov**.
+
+Changes: repaired PBR texture connections, removed false emission, compressed/resized textures, smoothed split normals, baked tangents, removed horizontal root drift and added three ZAY gameplay gestures. Source and runtime SHA-256 hashes, evaluation, reproduction instructions and limitations are recorded in `docs/graphics/zay-shadow-rogue.md`. The source archive is not redistributed. The user's reference image was used for visual direction only and is not included.
+
 ## Temporary ZAY rig — KayKit Adventurers 1.0 (CC0)
 
 `models/zay/rogue.glb` is the unmodified `Rogue_Hooded.glb` from [Kay Lousberg's official KayKit Adventurers repository](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0), commit `672074b73ba276876a19e8816ecdc5241817ab47`, under `addons/kaykit_character_pack_adventures/Characters/gltf/`.
@@ -8,7 +14,7 @@ The model, embedded atlas and 76 embedded animation clips are released under [Cr
 
 SHA-256: `93e6e25213009952276d9cf34f5d96a243767334c66f280db0433ddfabb91545` (3,597,652 bytes). Runtime changes hide crossbows/throwable equipment, normalize scale/orientation, adjust roughness, blend selected clips and remove horizontal root motion from cloned animation tracks. The source binary remains unchanged.
 
-This is an explicitly approved visual-development placeholder for ZAY; it does not redefine his canonical appearance or story. No other library's character assets were incorporated. See `docs/graphics/major-overhaul.md` for evaluation and replacement instructions.
+This retained earlier visual-development placeholder does not redefine ZAY's canonical appearance or story. See `docs/graphics/major-overhaul.md` for evaluation and replacement instructions.
 
 ## Icons — unity-ui-toolkit-design-system
 

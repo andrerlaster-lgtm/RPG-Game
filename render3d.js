@@ -6,7 +6,7 @@
 //
 // Scale: one map tile (32 px) is one unit. The map's x runs along x, its y along z, and up is y.
 // A figure faces +x, so a game direction `dir` is rotation.y = -dir.
-// ZAY uses a replaceable CC0 rig; named NPCs retain their established procedural figures.
+// ZAY uses a replaceable licensed rig; named NPCs retain their established procedural figures.
 
 import { makePlaster, makeWetness, createAtmosphere, addFacadeArt } from './world-art3d.js';
 import { loadHero } from './hero3d.js';
@@ -54,11 +54,11 @@ if (renderer) {
   const moon = new THREE.DirectionalLight(0x86a0e0, 0.85);
   moon.position.set(-6, 14, -4);
   scene.add(moon, moon.target);
-  // Static moon shadows are refreshed only when a district is rebuilt. Moving people retain
-  // the lantern-aware contact shadows, avoiding six extra shadow renders on every frame.
+  // Cache the district moon map; only the small character spotlight updates each frame.
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.autoUpdate = true;
+  moon.shadow.autoUpdate = false;
   moon.castShadow = true;
   moon.shadow.mapSize.setScalar(isTouch ? 1024 : 2048);
   moon.shadow.bias = -0.0004;
@@ -69,6 +69,8 @@ if (renderer) {
     mood = atmosphere.apply(SETTINGS.lighting || 'night', indoorScene);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SETTINGS.quality === 'low' ? 1 : 1.5));
     renderer.shadowMap.enabled = SETTINGS.quality !== 'low';
+    zayLight.castShadow = renderer.shadowMap.enabled;
+    moon.shadow.needsUpdate = true;
     graphicsKey = SETTINGS.lighting + SETTINGS.quality;
   }
 
@@ -79,9 +81,14 @@ if (renderer) {
     scene.add(l);
     LIGHTS.push(l);
   }
-  // ZAY's own faint glow so he never disappears into the dark.
-  const zayLight = new THREE.PointLight(0x8fa0d8, 2.2, 4.8, 1.5);
-  scene.add(zayLight);
+  // A soft key light makes the face and leather readable without making the mesh emissive.
+  // Its tight 512px shadow frustum follows ZAY; low quality keeps the contact shadow only.
+  const zayLight = new THREE.SpotLight(0xe3d6c4, 13, 8, Math.PI / 7, 0.65, 2);
+  zayLight.castShadow = true;
+  zayLight.shadow.mapSize.set(512, 512);
+  zayLight.shadow.camera.near = 0.2; zayLight.shadow.camera.far = 8;
+  zayLight.shadow.bias = -0.0003; zayLight.shadow.normalBias = 0.012;
+  scene.add(zayLight, zayLight.target);
 
   const resize3d = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SETTINGS.quality === 'low' ? 1 : 1.5));
@@ -513,7 +520,7 @@ if (renderer) {
     moon.target.position.set(W / 2, 0, H / 2);
     Object.assign(moon.shadow.camera, { left: -span * 0.75, right: span * 0.75, top: span * 0.75, bottom: -span * 0.75, near: 0.5, far: span * 3 });
     moon.shadow.camera.updateProjectionMatrix();
-    renderer.shadowMap.needsUpdate = true;
+    moon.shadow.needsUpdate = true;
     scene.add(world);
     for (const [obj, g] of figures) { releaseFigure(g); figures.delete(obj); delete obj.__cone; delete obj.__mark; }
     // Cones and marks belong to the last visit's guards.
@@ -1146,7 +1153,8 @@ if (renderer) {
     zay.userData.ledger.visible = !!p.hasLedger;
     const faded = p.hidden || (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0);
     zay.traverse((o) => { if (o.isMesh && o.material && !o.material.isMeshBasicMaterial) { if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = true; } o.material.transparent = faded; o.material.opacity = faded ? 0.5 : 1; } });
-    zayLight.position.set(p.x * S, 1.3, p.y * S);
+    zayLight.position.set(p.x * S + 1.7, 3.6, p.y * S + 1.5);
+    zayLight.target.position.set(p.x * S, 0.7, p.y * S);
 
     // Guards
     for (const g of state.guards) {
@@ -1281,7 +1289,12 @@ if (renderer) {
       const sphere = batch.boundingSphere;
       batch.visible = camera.position.distanceTo(sphere.center) < sphere.radius + (SETTINGS.quality === 'low' ? 8 : 18);
     }
-    renderer.render(scene, camera);
+    // Never bake a moving character into the cached moon map. The small moving
+    // spotlight resumes casting him on the next frame after a cache refresh.
+    const refreshMoon = renderer.shadowMap.enabled && moon.shadow.needsUpdate;
+    if (refreshMoon) heroRig?.setShadowCaster(false);
+    try { renderer.render(scene, camera); }
+    finally { if (refreshMoon) heroRig?.setShadowCaster(true); }
   }
 
   window.R3D = { ready: true, render, playHero: role => heroRig?.play(role), hero: () => heroRig?.debug() || { loaded: false, error: heroError }, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ lighting: atmosphere.current, quality: renderer.shadowMap.enabled ? 'high' : 'low', calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
