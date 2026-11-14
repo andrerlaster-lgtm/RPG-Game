@@ -34,6 +34,7 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
     // Finish the existing opening lines using the real dialog controls.
     for(let i=0;i<12;i++) {if(await page.evaluate(()=>!DLG.open))break;await page.keyboard.press('Enter');await page.waitForTimeout(60);}
     await page.waitForFunction(()=>state.mode==='field');
+    await page.waitForFunction(()=>R3D.hero().loaded);
     await record('startup and visible 3D canvas',async()=>{
       assert.ok(await page.locator('#game3d').isVisible());
       assert.equal(await page.evaluate(()=>state.district),'lantern');return await page.evaluate(()=>R3D.debug());
@@ -42,11 +43,33 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
     await record('WASD movement, braking and animated limbs',async()=>{
       const before=await page.evaluate(()=>({x:state.player.x,y:state.player.y}));
       await page.keyboard.down('w');await page.waitForTimeout(450);
-      const moving=await page.evaluate(()=>({x:state.player.x,y:state.player.y,v:Math.hypot(state.player.vx,state.player.vy),stride:R3D.scene.children.find(g=>g.userData.town!==undefined)?.userData.stride}));
+      const moving=await page.evaluate(()=>({x:state.player.x,y:state.player.y,v:Math.hypot(state.player.vx,state.player.vy),stride:R3D.scene.children.find(g=>g.userData.town!==undefined)?.userData.stride,clip:R3D.hero().clip}));
       await page.keyboard.up('w');await page.waitForTimeout(200);
       assert.ok(Math.hypot(moving.x-before.x,moving.y-before.y)>8);
       assert.ok(moving.v>50);assert.ok(moving.stride>0.2);
+      assert.equal(moving.clip,'Walking_A');
       assert.equal(await page.evaluate(()=>Math.hypot(state.player.vx,state.player.vy)),0);return moving;
+    });
+    await record('rigged locomotion blends, bones animate, and actions remain in place',async()=>{
+      const rig=await page.evaluate(()=>{
+        state.paused=true;
+        const rig=R3D.scene.children.find(g=>g.userData.rig).userData.rig;
+        const p={dashT:0};rig.reset();rig.update(0.1,0,p);const idle=rig.debug();
+        rig.update(0.08,118,p);const blend=rig.debug();rig.update(0.12,118,p);const walk=rig.debug();
+        rig.update(0.2,185,p);const run=rig.debug();
+        rig.update(0.06,300,{dashT:0.17});const dodge=rig.debug();
+        rig.update(0.2,0,p);const landed=rig.debug();
+        rig.play('attack');rig.update(0.15,0,p);const attack=rig.debug();
+        rig.play('attack');const repeat=rig.debug();rig.update(0.6,0,p);const recovered=rig.debug();
+        rig.reset();state.paused=false;
+        return {idle,blend,walk,run,dodge,landed,attack,repeat,recovered};
+      });
+      assert.equal(rig.idle.clip,'Idle');assert.equal(rig.walk.clip,'Walking_A');assert.equal(rig.run.clip,'Running_A');
+      assert.ok(rig.blend.weights.idle>0&&rig.blend.weights.idle<1);assert.ok(rig.blend.weights.walk>0&&rig.blend.weights.walk<1);
+      assert.notDeepEqual(rig.walk.leg,rig.blend.leg);assert.equal(rig.dodge.clip,'Dodge_Forward');
+      assert.ok(Math.abs(rig.dodge.root[0]-rig.idle.root[0])<1e-5&&Math.abs(rig.dodge.root[2]-rig.idle.root[2])<1e-5);
+      assert.equal(rig.landed.clip,'Idle');assert.equal(rig.attack.clip,'Dualwield_Melee_Attack_Slice');
+      assert.equal(rig.repeat.time,0);assert.equal(rig.recovered.clip,'Idle');return {blend:rig.blend.weights,roles:rig.idle.clips};
     });
     await record('orbit, zoom, recenter, and right-click card',async()=>{
       const before=await page.evaluate(()=>R3D.debug());
@@ -58,6 +81,7 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
       const cards=await page.evaluate(()=>state.player.cards);
       await page.mouse.click(700,450,{button:'right'});await page.waitForTimeout(100);
       assert.equal(await page.evaluate(()=>state.player.cards),cards-1);
+      assert.equal(await page.evaluate(()=>R3D.hero().clip),'Throw');
     });
     await record('legacy arrows, sprint, roll, collision, and blocked footsteps',async()=>{
       // Deterministic fixtures exercise the actual updatePlayer and move functions on a real map.
@@ -71,6 +95,7 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
         if(!(ran>walked+15))throw Error('sprint did not exceed walk');
         resetTraversal();p.x=912;p.y=522;p.dir=Math.PI;p.dashCd=0;pressed.add(' ');updatePlayer(1/60);pressed.clear();
         if(!(p.dashT>0&&p.invuln>0))throw Error('roll did not start');
+        R3D.render(1/60);if(R3D.hero().clip!=='Dodge_Forward')throw Error('roll animation did not start');
         // Find a clear street immediately east of a wall, away from NPCs.
         let spot;
         for(let y=1;y<H-1&&!spot;y++)for(let x=1;x<W-1;x++)if(grid[y][x]==='.'&&grid[y][x-1]==='#'&&!FURN.has(y*W+x)){
@@ -123,6 +148,23 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
         } finally {Object.defineProperty(navigator,'getGamepads',{configurable:true,value:getPads});padHeld.clear();resetTraversal();}
       });
     });
+    await record('lighting and quality controls persist, preserve gameplay, and reuse textures',async()=>{
+      await page.keyboard.press('Escape');await page.click('#pause-options');
+      const snapshot=()=>page.evaluate(()=>({x:state.player.x,y:state.player.y,hp:state.player.hp,cards:state.player.cards,district:state.district,grid:JSON.stringify(grid)}));
+      const before=await snapshot();
+      for(const lighting of ['night','dusk','day'])await page.click(`[data-lighting="${lighting}"]`);
+      await page.click('[data-quality="low"]');await page.waitForFunction(()=>R3D.debug().lighting==='day'&&R3D.debug().quality==='low');
+      const warm=await page.evaluate(()=>R3D.debug());
+      assert.ok(await page.evaluate(()=>R3D.scene.children.filter(o=>o.isPointLight&&o.visible&&o.intensity>0).length<=4));
+      for(const lighting of ['night','dusk','day','night','dusk','day']){await page.click(`[data-lighting="${lighting}"]`);await page.waitForTimeout(60);}
+      const reused=await page.evaluate(()=>R3D.debug());assert.equal(reused.textures,warm.textures);assert.deepEqual(await snapshot(),before);
+      assert.equal(await page.locator('[data-quality="low"]').getAttribute('aria-checked'),'true');
+      await page.evaluate(()=>writeSave());await page.reload();await page.waitForFunction(()=>window.R3D&&LEVEL);
+      assert.deepEqual(await page.evaluate(()=>({lighting:SETTINGS.lighting,quality:SETTINGS.quality})),{lighting:'day',quality:'low'});
+      await page.click('#continue');await page.waitForFunction(()=>state.mode==='field'&&R3D.hero().loaded);
+      await page.keyboard.press('Escape');await page.click('#pause-options');await page.click('[data-lighting="night"]');await page.click('[data-quality="high"]');
+      await page.click('#options-done');await page.click('#resume');return {warm: warm.textures,reused: reused.textures};
+    });
     await record('Noe interaction and existing ledger quest choices',async()=>{
       await page.evaluate(async()=>{await enterDistrict('crooked-halo','start',{save:false});const n=state.npcs.find(n=>n.who==='noe');state.player.x=n.x;state.player.y=n.y+40;state.player.dir=-Math.PI/2;});
       await page.keyboard.press('e');await page.waitForFunction(()=>DLG.open);
@@ -172,6 +214,17 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
       const fallback=await browser.newContext({viewport:{width:800,height:600}});
       await fallback.addInitScript(()=>{const original=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){return type.startsWith('webgl')?null:original.call(this,type,...args);};});
       const p=await fallback.newPage();await p.goto(url);await p.waitForFunction(()=>LEVEL);await p.click('#start');await p.waitForTimeout(500);await p.evaluate(()=>closeDialog());assert.ok(await p.locator('#game').isVisible());assert.equal(await p.evaluate(()=>use3D()),false);await fallback.close();
+    });
+    await record('unavailable ZAY asset retains a playable procedural fallback',async()=>{
+      const fallback=await browser.newContext({viewport:{width:800,height:600}});
+      await fallback.route('**/models/zay/rogue.glb',route=>route.fulfill({status:404,body:'Deliberately unavailable test asset'}));
+      const p=await fallback.newPage(),runtime=[];p.on('pageerror',e=>runtime.push(e.message));
+      await p.goto(url);await p.waitForFunction(()=>window.R3D&&LEVEL&&R3D.hero().error);
+      await p.click('#start');await p.waitForTimeout(500);await p.evaluate(()=>closeDialog());
+      const before=await p.evaluate(()=>({x:state.player.x,y:state.player.y}));await p.keyboard.down('w');await p.waitForTimeout(300);await p.keyboard.up('w');
+      assert.ok(await p.evaluate(old=>Math.hypot(state.player.x-old.x,state.player.y-old.y)>5,before));
+      assert.ok(await p.locator('#game3d').isVisible());assert.equal(await p.evaluate(()=>R3D.hero().loaded),false);assert.deepEqual(runtime,[]);
+      await fallback.close();
     });
     await record('no runtime/shader errors or failed local assets',async()=>{assert.deepEqual(errors,[]);assert.deepEqual(failures,[]);});
     fs.writeFileSync(path.join(artifacts,'results.json'),JSON.stringify(results,null,2));
