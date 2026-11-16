@@ -83,7 +83,7 @@ export function createAtmosphere(renderer, scene, hemi, sun) {
 }
 
 // Decorative geometry is batched by material and never changes navigation or interaction locations.
-export function addFacadeArt({world, edges, grid, W, H, S, estate}) {
+export function addFacadeArt({world, edges, grid, W, H, S, estate, riseAt = () => 0, storey = 0.8}) {
   const batches=new Map(), matrix=new THREE.Matrix4(), q=new THREE.Quaternion();
   const mats={trim:new THREE.MeshStandardMaterial({color:estate?0xc5bdad:0xddd1b3,roughness:.85}),
     iron:new THREE.MeshStandardMaterial({color:0x283c40,metalness:.75,roughness:.4}),
@@ -105,10 +105,13 @@ export function addFacadeArt({world, edges, grid, W, H, S, estate}) {
     const angle=Math.atan2(nx,nz), hash=Math.abs(Math.round(x*17+z*37));
     function part(mat,a,out,y,w,h,d,geo=box){add(geo,mat,x+nz*a+nx*out,y,z-nx*a+nz*out,w,h,d,angle);}
     // Continuous cornice, string course, base course and raised sidewalk margin.
-    part('trim',0,.025,2.36,1.02,.13,.18);part('trim',0,.02,1.39,1.01,.07,.1);
+    // (a taller house keeps a band where the old eaves were, and carries its cornice up to the new ones)
+    const rise=riseAt(Math.floor(x-nx*.3),Math.floor(z-nz*.3)), floors=Math.round(rise/storey);
+    part('trim',0,.025,2.36+rise,1.02,.13,.18);part('trim',0,.02,1.39,1.01,.07,.1);
+    if(rise)part('trim',0,.02,2.33,1.01,.07,.1);
     part('trim',0,.025,.14,1,.26,.1);part('trim',0,.17,.023,1,.04,.34);
     if(!e.win)continue;
-    for(const y of [.95,1.75]){
+    for(const y of [.95,1.75,2.55,3.35].slice(0,2+floors)){
       for(const side of [-1,1]){
         part('trim',side*.25,.025,y,.045,.64,.08);
         part('shutter',side*.35,.045,y,.15,.58,.05);

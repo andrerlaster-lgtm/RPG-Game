@@ -81,6 +81,7 @@ async function enterDistrict(id, spawn = 'start', { save = true } = {}) {
   resetDistrict();
   const at = SPAWNS[state.spawn];
   state.player.x = at.x; state.player.y = at.y;
+  state.player.vault = null; state.player.z = 0;
   // Arrive facing into the district (this is what the 3D camera looks along).
   state.player.dir = Math.atan2(H * TILE / 2 - at.y, W * TILE / 2 - at.x);
   // Exits stay off until you've walked a little way from where you arrived, so holding the direction you

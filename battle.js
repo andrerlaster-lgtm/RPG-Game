@@ -303,7 +303,7 @@ function apply(a) {
     B.precise += actor.side === 'party' ? 1 : 0; B.blocked += actor.side === 'party' ? 0 : 1;
     B.fx.push({ kind: 'timing', target: actor.side === 'party' ? (targets[0] || actor) : targets[0], t: 0, color: actor.side === 'party' ? '#ffe08a' : '#9fd3ff' });
     play('clang', { vol: 0.6 });
-    if (actor.side !== 'party' && window.R3D && R3D.playHero) R3D.playHero('dodge');
+    if (actor.side !== 'party' && window.R3D && R3D.playHero) R3D.playHero('block');
   }
   if (a.type === 'hit') {
     const t = targets[0] || aliveOn(actor.side === 'party' ? 'enemy' : 'party')[0];

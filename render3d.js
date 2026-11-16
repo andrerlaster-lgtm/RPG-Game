@@ -6,12 +6,13 @@
 //
 // Scale: one map tile (32 px) is one unit. The map's x runs along x, its y along z, and up is y.
 // A figure faces +x, so a game direction `dir` is rotation.y = -dir.
-// ZAY uses a replaceable licensed rig; named NPCs retain their established procedural figures.
+// ZAY uses a replaceable licensed rig; guards, Noe, Severin and the townsfolk are built in people3d.js.
 
 import { makePlaster, makeWetness, createAtmosphere, addFacadeArt } from './world-art3d.js';
 import { loadHero } from './hero3d.js';
 import { makeStreetLife } from './streetlife3d.js';
 import { makePost } from './post3d.js';
+import { makePeople } from './people3d.js';
 import * as THREE from './vendor/three/three.module.min.js';
 import { mergeGeometries } from './vendor/three/addons/BufferGeometryUtils.js';
 import { GLTFLoader } from './vendor/three/addons/GLTFLoader.js';
@@ -19,6 +20,7 @@ import { makeCobbles, makeTint, withTint, makeGlow, makeWindow, makeBlob, makeMi
 
 const S = 1 / TILE;
 const WALL_H = 2.4;
+const STOREY = 0.8;   // some houses get one or two more floors of this height
 const FIG_H = 1.05;   // a standing person
 
 let renderer;
@@ -251,6 +253,10 @@ if (renderer) {
   const HALO_MAT = new THREE.SpriteMaterial({ map: glowTex, color: 0xffa646, transparent: true, opacity: HALO_BASE, blending: THREE.AdditiveBlending, depthWrite: false });
   // How high the top of each tile is (walls, plus the roof over them), for the camera.
   let TOPS = new Float32Array(0);
+  // How much taller than a plain wall each building tile is (extra storeys), for windows, trim, roofs and chimneys.
+  let RISE = new Float32Array(0);
+  let landmarkAt = null;   // where this district's tower stands (tiles), or null indoors
+  const riseAt = (tx, tz) => (tx < 0 || tz < 0 || tx >= W || tz >= H ? 0 : RISE[tz * W + tx] || 0);
   let galleries = [];
 
   // ---------- The district (rebuilt whenever a new map loads) ----------
@@ -259,7 +265,7 @@ if (renderer) {
   function build() {
     if (world) {
       scene.remove(world);
-      const sharedMats = new Set([...mats.values(), ...Object.values(WALLS), ...SLOPES, roofMat, POOL_MAT, MIST_MAT, HALO_MAT]);
+      const sharedMats = new Set([...mats.values(), ...Object.values(WALLS), ...SLOPES, roofMat, POOL_MAT, MIST_MAT, HALO_MAT, clockMat, beaconMat]);
       const disposed = new Set();
       world.traverse((o) => {
         if (o.userData.keep) return;
@@ -328,8 +334,9 @@ if (renderer) {
       else if (t === 'w') water.push([tx, ty]);
     }
     const m4 = new THREE.Matrix4();
-    TOPS = new Float32Array(W * H);
+    TOPS = new Float32Array(W * H); RISE = new Float32Array(W * H);
     if (solid.length) buildBlocks(m4);
+    if (!indoors) buildSkyline();
     if (hedges.length) {
       const bush = new THREE.IcosahedronGeometry(0.55, 1);
       const hm = new THREE.InstancedMesh(bush, lambert(0x2a5233), hedges.length);
@@ -365,8 +372,9 @@ if (renderer) {
       }
     }
     buildStreetDetail(indoors);
-    facadeDetail = !indoors ? addFacadeArt({world, edges: EDGES, grid, W, H, S, estate: state.district === 'crown-estate'}) : null;
-    streetLife = STREET.build(world, { grid, W, H, TILE, EDGES, TREES, indoors, estate: state.district === 'crown-estate', shadows: true,
+    if (indoors) buildInterior();
+    facadeDetail = !indoors ? addFacadeArt({world, edges: EDGES, grid, W, H, S, estate: state.district === 'crown-estate', riseAt, storey: STOREY}) : null;
+    streetLife = STREET.build(world, { grid, W, H, TILE, EDGES, TREES, indoors, riseAt, estate: state.district === 'crown-estate', shadows: true,
       town: indoors || state.district === 'crown-estate' ? 0 : state.district === 'lantern' ? 1 : 0.5 });
 
     // Windows on street-facing walls: warm lit panes or dark shutters.
@@ -379,12 +387,19 @@ if (renderer) {
     const haloGeo = new THREE.PlaneGeometry(0.78, 0.98), flatGeo = new THREE.PlaneGeometry(1, 1);
     const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
     const warm = new THREE.Color();
+    // The rows of windows on a wall: two, plus one for every extra storey of the house behind it.
+    const rowsOf = (e) => {
+      const [nx, nz] = NORMAL[e.side], n = Math.round(riseAt(Math.floor((e.x0 + e.x1) / 2 * S - nx * 0.3), Math.floor((e.y0 + e.y1) / 2 * S - nz * 0.3)) / STOREY);
+      return n === 0 ? ROWS0 : n === 1 ? ROWS1 : ROWS2;
+    };
+    const ROWS0 = [0.95, 1.75], ROWS1 = [0.95, 1.75, 2.55], ROWS2 = [0.95, 1.75, 2.55, 3.35];
     for (const [list, mat] of [[lit, paneMat], [shut, lambert(0x3a2618)]]) {
       if (!list.length || indoors) continue;   // a room's own walls have no street windows
       const isLit = list === lit;
-      const im = new THREE.InstancedMesh(pane, mat, list.length * 2);
+      const panes = list.reduce((n, e) => n + rowsOf(e).length, 0);
+      const im = new THREE.InstancedMesh(pane, mat, panes);
       // Lit windows also get a soft glow around the glass and a pool of light on the street in front of them.
-      const halo = isLit ? new THREE.InstancedMesh(haloGeo, addMat(glowTex, 0xff8f2e, 0.55), list.length * 2) : null;
+      const halo = isLit ? new THREE.InstancedMesh(haloGeo, addMat(glowTex, 0xff8f2e, 0.55), panes) : null;
       const pool = isLit ? new THREE.InstancedMesh(flatGeo, addMat(glowTex, 0xff8f2e, 0.2), list.length) : null;
       const q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
       let i = 0, j = 0;
@@ -393,11 +408,11 @@ if (renderer) {
         q.setFromAxisAngle(up, ROT[e.side]);
         const cx = (e.x0 + e.x1) / 2 * S + nx * 0.01, cz = (e.y0 + e.y1) / 2 * S + nz * 0.01;
         const hsh = ((Math.round(cx * 31) * 73856093) ^ (Math.round(cz * 31) * 19349663)) >>> 0;
-        for (const y of [0.95, 1.75]) {
+        for (const y of rowsOf(e)) {
           im.setMatrixAt(i, m4.compose(new THREE.Vector3(cx, y, cz), q, one));
           if (isLit) {
             // each window a slightly different warmth and brightness (candle, lamp, hearth)
-            const k = ((hsh >>> (y > 1 ? 4 : 0)) % 100) / 100;
+            const k = ((hsh >>> (Math.round(y / 0.8) * 4 - 4)) % 100) / 100;
             warm.setRGB(0.62 + 0.38 * k, 0.5 + 0.4 * k * k, 0.3 + 0.3 * k);
             im.setColorAt(i, warm);
             halo.setMatrixAt(i, m4.compose(new THREE.Vector3(cx + nx * 0.012, y, cz + nz * 0.012), q, one));
@@ -466,7 +481,14 @@ if (renderer) {
     // The posts, cores and caps are drawn instanced (three draw calls for every lamp in the district).
     if (LAMPS.length) {
       const dark = lambert(0x15121c);
-      const parts = [
+      // Out in the street: an iron lamp post. Indoors: a tall candle stand with a brass dish.
+      const parts = indoors ? [
+        [new THREE.CylinderGeometry(0.025, 0.03, 1.3, 6), dark, 0.65],
+        [new THREE.CylinderGeometry(0.03, 0.16, 0.06, 10), dark, 0.03],
+        [new THREE.CylinderGeometry(0.14, 0.05, 0.05, 10), lambert(0xb08a3e), 1.31],
+        [new THREE.CylinderGeometry(0.035, 0.035, 0.2, 6), lambert(0xe8d9b0), 1.43],
+        [new THREE.SphereGeometry(0.045, 8, 6), glowMat(0xffd48a), 1.57],
+      ] : [
         [new THREE.CylinderGeometry(0.035, 0.055, 1.85, 6), dark, 0.925],
         [new THREE.CylinderGeometry(0.1, 0.07, 0.05, 8), dark, 1.84],
         [new THREE.CylinderGeometry(0.075, 0.09, 0.2, 8), glowMat(0xffd48a), 1.96],
@@ -481,7 +503,7 @@ if (renderer) {
       pool.renderOrder = 1;
       LAMPS.forEach((l, i) => {
         pool.setMatrixAt(i, m4.compose(new THREE.Vector3(l.x * S, 0.01, l.y * S), flat, new THREE.Vector3(l.r * S * 1.5, l.r * S * 1.5, 1)));
-        const sp = new THREE.Sprite(HALO_MAT); sp.position.set(l.x * S, 1.97, l.y * S); sp.scale.setScalar(1.25); sp.renderOrder = 3;
+        const sp = new THREE.Sprite(HALO_MAT); sp.position.set(l.x * S, indoors ? 1.57 : 1.97, l.y * S); sp.scale.setScalar(indoors ? 0.8 : 1.25); sp.renderOrder = 3;
         world.add(sp);
       });
       world.add(pool);
@@ -527,7 +549,7 @@ if (renderer) {
       if (!o.isMesh) return;
       const materials = Array.isArray(o.material) ? o.material : [o.material];
       const opaque = materials.every((m) => !m.transparent && !m.isMeshBasicMaterial);
-      o.castShadow = opaque && !(o.geometry.type === 'PlaneGeometry');
+      o.castShadow = opaque && !(o.geometry.type === 'PlaneGeometry') && !o.userData.skyline;
       o.receiveShadow = opaque;
     });
     const span = Math.max(W, H);
@@ -563,23 +585,42 @@ if (renderer) {
   }
   function buildBlocks(m4) {
     const estate = (DISTRICTS[state.district] || {}).look === 'rogue';
+    const indoors = indoorScene;
     const rects = buildRects();
-    TOPS = new Float32Array(W * H);
+    TOPS = new Float32Array(W * H); RISE = new Float32Array(W * H);
     const hash = (r) => ((r.x * 73856093) ^ (r.y * 19349663) ^ (r.w * 83492791)) >>> 0;
-    const tiles = { plaster: [], brick: [], timber: [], stone: [] }, colors = new Map();
+    const tiles = { plaster: [], brick: [], timber: [], stone: [] }, uppers = { plaster: [], brick: [], timber: [], stone: [] }, colors = new Map();
     const gables = { plaster: [], brick: [], timber: [], stone: [] };
     const slopes = SLOPES.map(() => []);
     const O = 0.14;   // eaves overhang
+    // The district's landmark stands on its biggest building (nearest the middle when there's a tie).
+    let landmark = null;
+    if (!indoors) for (const r of rects) {
+      if (Math.min(r.w, r.h) < 3) continue;
+      const score = r.w * r.h - Math.hypot(r.x + r.w / 2 - W / 2, r.y + r.h / 2 - H / 2) * 0.6 - (r.x === 0 || r.y === 0 || r.x + r.w >= W || r.y + r.h >= H ? 40 : 0);
+      if (!landmark || score > landmark.score) landmark = { r, score };
+    }
     for (const r of rects) {
       const hv = hash(r);
       const finish = estate ? 'stone' : hv % 5 < 4 ? 'plaster' : 'brick';
-      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) { tiles[finish].push([r.x + i, r.y + j]); colors.set((r.y+j)*W+r.x+i, [0x93b5a8,0xc6a98c,0xa6b8c5,0xc29685,0xc5bf9b][hv%5]); TOPS[(r.y + j) * W + r.x + i] = WALL_H; }
+      // Extra storeys: most houses stay two floors, some get a third, a few a fourth. Thin walls (garden walls,
+      // the walls ZAY vaults, the inside of a room) never grow.
+      const pick = (hv >>> 9) % 10, house = !indoors && Math.min(r.w, r.h) >= 2;
+      const nearVault = VAULTS.some((v) => v.wall.x * S > r.x - 1.5 && v.wall.x * S < r.x + r.w + 1.5 && v.wall.y * S > r.y - 1.5 && v.wall.y * S < r.y + r.h + 1.5);
+      const floors = !house || nearVault ? 0 : landmark && landmark.r === r ? 1 : pick < 3 ? 1 : pick === 3 ? 2 : 0;
+      const rise = floors * STOREY, top = WALL_H + rise;
+      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) {
+        const idx = (r.y + j) * W + r.x + i;
+        tiles[finish].push([r.x + i, r.y + j]);
+        for (let f = 0; f < floors; f++) uppers[finish].push([r.x + i, r.y + j, f]);
+        colors.set(idx, [0x93b5a8,0xc6a98c,0xa6b8c5,0xc29685,0xc5bf9b][hv%5]); TOPS[idx] = top; RISE[idx] = rise;
+      }
       if (Math.min(r.w, r.h) < 2) continue;
       // Ridge along the long side; the roof rises half the short side (capped), like a steep city roof.
       const alongX = r.w >= r.h;
       const span = alongX ? r.h : r.w, len = alongX ? r.w : r.h;
       const pitch = Math.min(1.1, span * 0.42);
-      const y0 = WALL_H - 0.02, y1 = WALL_H + pitch;
+      const y0 = top - 0.02, y1 = top + pitch;
       // In local terms: a runs along the ridge, b across it.
       const P = (a, b, y) => alongX ? [r.x + a, y, r.y + b] : [r.x + b, y, r.y + a];
       const sl = slopes[estate ? 0 : hv % 3];
@@ -589,18 +630,23 @@ if (renderer) {
         sl.push({ q, u: len + 2 * O, v: slopeLen });
       }
       for (const a of [0, len]) gables[finish].push([P(a, 0, y0), P(a, span, y0), P(a, span / 2, y1)]);
-      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) {
-        const b = alongX ? j + 0.5 : i + 0.5;
-        TOPS[(r.y + j) * W + r.x + i] = WALL_H + pitch; // conservative ridge envelope, including tile edges
-      }
+      for (let j = 0; j < r.h; j++) for (let i = 0; i < r.w; i++) TOPS[(r.y + j) * W + r.x + i] = top + pitch;   // conservative ridge envelope, including tile edges
     }
     const box = new THREE.BoxGeometry(1, WALL_H, 1);
+    // An upper storey: the same wall finish, sampled from the middle of the texture (no damp foot, no eaves trim).
+    const upBox = new THREE.BoxGeometry(1, STOREY, 1);
+    { const uv = upBox.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setY(i, 0.5 + uv.getY(i) * 0.33); }
     for (const [finish, list] of Object.entries(tiles)) {
       if (!list.length) continue;
       const mat = WALLS[finish];
       const im = new THREE.InstancedMesh(box, [mat, mat, roofMat, roofMat, mat, mat], list.length);
       list.forEach(([tx, ty], i) => { im.setMatrixAt(i, m4.makeTranslation(tx + 0.5, WALL_H / 2, ty + 0.5)); if(finish==='plaster')im.setColorAt(i,new THREE.Color(colors.get(ty*W+tx))); });
       world.add(im);
+      const up = uppers[finish];
+      if (!up.length) continue;
+      const um = new THREE.InstancedMesh(upBox, [mat, mat, roofMat, roofMat, mat, mat], up.length);
+      up.forEach(([tx, ty, f], i) => { um.setMatrixAt(i, m4.makeTranslation(tx + 0.5, WALL_H + STOREY * (f + 0.5), ty + 0.5)); if (finish === 'plaster') um.setColorAt(i, new THREE.Color(colors.get(ty * W + tx))); });
+      world.add(um);
     }
     // Roof slopes: quads with the slate texture repeating every unit.
     slopes.forEach((list, k) => {
@@ -630,6 +676,129 @@ if (renderer) {
       mat.side = THREE.DoubleSide;
       world.add(new THREE.Mesh(g, mat));
     }
+    landmarkAt = landmark ? { x: landmark.r.x + landmark.r.w / 2, z: landmark.r.y + landmark.r.h / 2 } : null;
+    if (landmark) buildLandmark(landmark.r, estate);
+  }
+
+  // ---------- Landmarks and the far skyline ----------
+  // One tall thing per district to steer by: a clock tower over the Lantern Quarter and the Veyrane estate,
+  // a harbour light over the River Quarter. It stands on a roof, so nothing about where you can walk changes.
+  const clockTex = canvasTex(128, 128, (c, w) => {
+    const r = w / 2;
+    c.fillStyle = '#2a2018'; c.fillRect(0, 0, w, w);
+    const g = c.createRadialGradient(r, r, 4, r, r, r - 6); g.addColorStop(0, '#fff3cf'); g.addColorStop(1, '#f0c06a');
+    c.fillStyle = g; c.beginPath(); c.arc(r, r, r - 8, 0, 7); c.fill();
+    c.strokeStyle = '#3a2618'; c.lineWidth = 5; c.beginPath(); c.arc(r, r, r - 9, 0, 7); c.stroke();
+    c.fillStyle = '#3a2618';
+    for (let i = 0; i < 12; i++) { c.save(); c.translate(r, r); c.rotate(i * Math.PI / 6); c.fillRect(-2, -r + 14, 4, i % 3 ? 8 : 15); c.restore(); }
+    c.lineCap = 'round'; c.lineWidth = 6; c.beginPath(); c.moveTo(r, r); c.lineTo(r + 17, r - 20); c.stroke();     // ten past ten:
+    c.lineWidth = 4; c.beginPath(); c.moveTo(r, r); c.lineTo(r - 30, r - 22); c.stroke();                            // the hour ZAY works
+    c.beginPath(); c.arc(r, r, 5, 0, 7); c.fill();
+  });
+  SHARED_TEX.add(clockTex);
+  const clockMat = new THREE.MeshBasicMaterial({ map: clockTex });
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
+  function buildLandmark(r, estate) {
+    const cx = r.x + r.w / 2, cz = r.y + r.h / 2, base = WALL_H + riseAt(r.x, r.y) + 0.3;
+    const g = new THREE.Group();
+    g.position.set(cx, 0, cz);
+    const trim = lambert(estate ? 0xc5bdad : 0xddd1b3), dark = lambert(0x15121c), gold = lambert(0xc9a25a);
+    let top;
+    if (state.district === 'river-quarter') {
+      // The harbour light: a tapering brick tower, an iron gallery, a lit lamp room under a copper cap.
+      const T = 7.4;
+      g.add(mesh(new THREE.CylinderGeometry(0.62, 0.9, T - base, 12), lambert(0x8a5a4a), 0, (T + base) / 2, 0));
+      for (const y of [base + (T - base) * 0.33, base + (T - base) * 0.66]) g.add(mesh(new THREE.CylinderGeometry(0.78, 0.8, 0.5, 12), lambert(0xd8cdb8), 0, y, 0));
+      g.add(mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.1, 12), dark, 0, T, 0));
+      g.add(mesh(new THREE.CylinderGeometry(0.93, 0.93, 0.03, 12, 1, true), dark, 0, T + 0.3, 0));
+      for (let i = 0; i < 8; i++) g.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 4), dark, Math.cos(i * Math.PI / 4) * 0.93, T + 0.15, Math.sin(i * Math.PI / 4) * 0.93));
+      g.add(mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.7, 10), beaconMat, 0, T + 0.4, 0));
+      for (let i = 0; i < 5; i++) g.add(mesh(new THREE.BoxGeometry(0.05, 0.72, 0.05), dark, Math.cos(i * Math.PI * 0.4) * 0.43, T + 0.4, Math.sin(i * Math.PI * 0.4) * 0.43));
+      g.add(mesh(new THREE.ConeGeometry(0.62, 0.7, 10), lambert(0x2f4a3c), 0, T + 1.1, 0));
+      g.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), gold, 0, T + 1.5, 0));
+      const halo = new THREE.Sprite(HALO_MAT); halo.position.set(0, T + 0.4, 0); halo.scale.setScalar(4.2); halo.renderOrder = 3; g.add(halo);
+      top = T + 1.5;
+    } else {
+      // The clock tower: a square shaft, a lit dial on each face, an open belfry and a slate spire.
+      const T = estate ? 8.2 : 7.4, wd = estate ? 1.9 : 1.6;
+      const shaftGeo = new THREE.BoxGeometry(wd, T - base, wd);
+      { const uv = shaftGeo.attributes.uv; for (let i = 0; i < uv.count; i++) { uv.setX(i, uv.getX(i) * 1.6); uv.setY(i, 0.3 + uv.getY(i) * 0.5); } }
+      const shaft = mesh(shaftGeo, estate ? lambert(0x8f8a96) : plasterMat, 0, (T + base) / 2, 0);
+      g.add(shaft);
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) g.add(mesh(new THREE.BoxGeometry(0.16, T - base, 0.16), trim, x * wd / 2, (T + base) / 2, z * wd / 2));   // corner stones
+      g.add(mesh(new THREE.BoxGeometry(wd + 0.3, 0.14, wd + 0.3), trim, 0, T - 1.75, 0));
+      g.add(mesh(new THREE.BoxGeometry(wd + 0.34, 0.16, wd + 0.34), trim, 0, T, 0));
+      const dial = new THREE.PlaneGeometry(1.05, 1.05);
+      for (let i = 0; i < 4; i++) {
+        const a = i * Math.PI / 2, d = mesh(dial, clockMat, Math.sin(a) * (wd / 2 + 0.02), T - 0.9, Math.cos(a) * (wd / 2 + 0.02));
+        d.rotation.y = a; g.add(d);
+        const ring = mesh(new THREE.TorusGeometry(0.56, 0.05, 5, 20), trim, Math.sin(a) * (wd / 2 + 0.03), T - 0.9, Math.cos(a) * (wd / 2 + 0.03));
+        ring.rotation.y = a; g.add(ring);
+      }
+      // Belfry: four posts, a dark bell, a cap.
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) g.add(mesh(new THREE.BoxGeometry(0.2, 0.9, 0.2), trim, x * (wd / 2 - 0.12), T + 0.53, z * (wd / 2 - 0.12)));
+      g.add(mesh(new THREE.CylinderGeometry(0.12, 0.3, 0.42, 10), lambert(0x6d5326), 0, T + 0.55, 0));
+      g.add(mesh(new THREE.BoxGeometry(wd + 0.2, 0.12, wd + 0.2), trim, 0, T + 1.04, 0));
+      const spire = mesh(new THREE.ConeGeometry((wd + 0.3) * 0.71, 2.3, 4), SLOPES[estate ? 0 : 1], 0, T + 2.25, 0);
+      spire.rotation.y = Math.PI / 4; g.add(spire);
+      g.add(mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.6, 5), dark, 0, T + 3.6, 0));
+      g.add(mesh(new THREE.SphereGeometry(0.09, 8, 6), gold, 0, T + 3.4, 0));
+      const halo = new THREE.Sprite(HALO_MAT); halo.position.set(0, T - 0.9, 0); halo.scale.setScalar(3.2); halo.renderOrder = 3; g.add(halo);
+      top = T + 3.4;
+    }
+    world.add(g);
+    // The camera treats the tower as solid.
+    for (let tz = Math.floor(cz - 1); tz <= Math.floor(cz + 1); tz++) for (let tx = Math.floor(cx - 1); tx <= Math.floor(cx + 1); tx++) {
+      if (tx >= 0 && tz >= 0 && tx < W && tz < H && Math.abs(tx + 0.5 - cx) < 1.3 && Math.abs(tz + 0.5 - cz) < 1.3) TOPS[tz * W + tx] = Math.max(TOPS[tz * W + tx], top);
+    }
+  }
+  // The rest of Bellemorne beyond the edge of the map: dark roofs, a few spires and lit windows fading into the
+  // haze, so streets don't end in nothing. Three draw calls; nobody can walk there.
+  function buildSkyline() {
+    let seed = (W * 7919 + H * 104729) >>> 0;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const riverSouth = grid[H - 1].filter((t) => t === 'w').length > W / 2, riverEast = grid.filter((row) => row[W - 1] === 'w').length > H / 2;
+    const boxes = [], roofs = [], lights = [];
+    const house = (x, z, far) => {
+      // keep the ends of streets that run off the map open
+      if (far < 12) for (let k = -2; k <= 2; k++) {
+        const outX = x < 0 || x > W, tx = Math.max(0, Math.min(W - 1, Math.floor(x) + (outX ? 0 : k))), tz = Math.max(0, Math.min(H - 1, Math.floor(z) + (outX ? k : 0)));
+        if (grid[tz][tx] !== '#') return;
+      }
+      const w = 1.6 + rnd() * 2.6, d = 1.6 + rnd() * 2.6, h = 2.2 + rnd() * 3.2 + far * 0.12, spire = rnd() < 0.07;
+      boxes.push([x, h / 2, z, w, h, d]);
+      roofs.push([x, h + (spire ? 1.6 : 0.5), z, Math.max(w, d) * 0.74, spire ? 3.2 : 1, spire ? 0.5 : 1]);
+      // windows on the side facing the map
+      const fx = x < 0 ? 1 : x > W ? -1 : 0, fz = fx ? 0 : z < 0 ? 1 : -1;
+      for (let k = 0; k < 3; k++) if (rnd() < 0.5) {
+        const along = (rnd() - 0.5) * (fx ? d : w) * 0.7, y = 0.9 + Math.floor(rnd() * Math.max(1, (h - 1) / 0.8)) * 0.8;
+        lights.push([x + fx * (w / 2 + 0.02) + (fx ? 0 : along), Math.min(y, h - 0.4), z + fz * (d / 2 + 0.02) + (fz ? 0 : along), fx ? (fx > 0 ? Math.PI / 2 : -Math.PI / 2) : (fz > 0 ? 0 : Math.PI)]);
+      }
+    };
+    for (let ring = 0; ring < 3; ring++) {
+      const off = 1.6 + ring * 3.6;
+      for (let x = -off - 2; x < W + off + 2; x += 2.6 + rnd() * 1.6) {
+        house(x, -off - rnd() * 1.5, off);
+        if (!riverSouth) house(x, H + off + rnd() * 1.5, off);
+      }
+      for (let z = -off; z < H + off; z += 2.6 + rnd() * 1.6) {
+        house(-off - rnd() * 1.5, z, off);
+        if (!riverEast) house(W + off + rnd() * 1.5, z, off);
+      }
+    }
+    // Across the water: the far bank, low and distant.
+    if (riverSouth) for (let x = -20; x < W + 20; x += 2.4 + rnd() * 2) house(x, H + 15 + rnd() * 5, 6);
+    if (riverEast) for (let z = -20; z < H + 20; z += 2.4 + rnd() * 2) house(W + 15 + rnd() * 5, z, 6);
+    const q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4();
+    const wallM = lambert(0x3d4152), roofM = lambert(0x24283a);
+    const bm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), wallM, boxes.length);
+    boxes.forEach(([x, y, z, w, h, d], i) => bm.setMatrixAt(i, m.compose(new THREE.Vector3(x, y, z), q.identity(), new THREE.Vector3(w, h, d))));
+    const rm = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 4), roofM, roofs.length);
+    q.setFromAxisAngle(up, Math.PI / 4);
+    roofs.forEach(([x, y, z, r, h, k], i) => rm.setMatrixAt(i, m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(r * k, h, r * k))));
+    const lm = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.34, 0.46), glowMat(0xffb45a), lights.length);
+    lights.forEach(([x, y, z, a], i) => lm.setMatrixAt(i, m.compose(new THREE.Vector3(x, y, z), q.setFromAxisAngle(up, a), new THREE.Vector3(1, 1, 1))));
+    for (const o of [bm, rm, lm]) { o.userData.skyline = true; world.add(o); }
   }
 
   // Street-facing iron galleries and garden planting, generated from existing map surfaces.
@@ -670,6 +839,90 @@ if (renderer) {
       if (!list.length) continue;
       const batch = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), lambert(color), list.length);
       list.forEach((m, i) => batch.setMatrixAt(i, m)); world.add(batch);
+    }
+  }
+
+  // ---------- Inside (the Crooked Halo) ----------
+  // Dresses a room from what the map already says: wood panelling and pictures on the walls, a shelf of bottles
+  // on the wall behind the bar, a curtain behind the stage and a rug under each table. Nothing here is solid.
+  const rugTex = canvasTex(96, 64, (c, w, h) => {
+    c.fillStyle = '#5c1a22'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = '#c9a25a'; c.lineWidth = 3; c.strokeRect(5, 5, w - 10, h - 10);
+    c.strokeStyle = '#2a2140'; c.lineWidth = 5; c.strokeRect(12, 12, w - 24, h - 24);
+    c.fillStyle = '#c9a25a';
+    for (let i = 0; i < 5; i++) { c.save(); c.translate(24 + i * 12, h / 2); c.rotate(Math.PI / 4); c.fillRect(-3.5, -3.5, 7, 7); c.restore(); }
+    c.fillStyle = 'rgba(0,0,0,.18)'; for (let y = 0; y < h; y += 3) c.fillRect(0, y, w, 1);
+  });
+  SHARED_TEX.add(rugTex);
+  function buildInterior() {
+    const B = { wood: [], rail: [], frame: [], art: [], bottle: [], curtain: [], gold: [] };
+    const push = (list, x, y, z, w, h, d, color) => list.push({ m: new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(w, h, d)), color });
+    const floor = (tx, tz) => tx >= 0 && tz >= 0 && tx < W && tz < H && grid[tz][tx] !== '#';
+    const ART = [0x7a1f2a, 0x26304d, 0x2f4a3e, 0x6b3d27, 0x4b2552, 0xb08a3e];
+    // Every wall face that looks into the room.
+    for (let tz = 0; tz < H; tz++) for (let tx = 0; tx < W; tx++) {
+      if (grid[tz][tx] !== '#') continue;
+      for (const [nx, nz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+        if (!floor(tx + nx, tz + nz)) continue;
+        const cx = tx + 0.5 + nx * 0.5, cz = tz + 0.5 + nz * 0.5;   // middle of the face
+        const along = (out, y, len, h, depth, list, color) => push(list, cx + nx * out, y, cz + nz * out, nx ? depth : len, h, nx ? len : depth, color);
+        along(0.02, 0.48, 1, 0.96, 0.04, B.wood);                      // panelling
+        along(0.035, 0.5, 0.06, 0.8, 0.03, B.rail); along(0.035, 0.5, 1, 0.05, 0.03, B.rail);   // its frame
+        along(0.045, 0.98, 1.02, 0.06, 0.09, B.rail);                  // dado rail
+        along(0.04, 0.05, 1.02, 0.1, 0.08, B.rail);                    // skirting
+        along(0.03, 2.05, 1.02, 0.05, 0.06, B.rail);                   // picture rail
+        const hv = ((tx * 73856093) ^ (tz * 19349663) ^ (nx * 83492791)) >>> 0;
+        if (hv % 3 === 0 && !EXITS.some((e) => Math.hypot((e.x + e.w / 2) * S - cx, (e.y + e.h / 2) * S - cz) < 1.6)) {   // a framed picture, hung from the rail
+          const pw = 0.42 + (hv % 5) * 0.05, ph = 0.36 + ((hv >>> 4) % 4) * 0.06;
+          along(0.03, 1.55, pw + 0.08, ph + 0.08, 0.04, B.frame);
+          along(0.045, 1.55, pw, ph, 0.03, B.art, ART[(hv >>> 7) % ART.length]);
+        }
+      }
+    }
+    for (const pr of PROPS) {
+      const px = (pr.x + pr.w / 2) * S, pz = (pr.y + pr.h / 2) * S, alongX = pr.w >= pr.h, len = Math.max(pr.w, pr.h) * S;
+      if (pr.kind !== 'counter' && pr.kind !== 'stage') continue;
+      // The wall behind it: whichever wall is nearest across its short side (the bar and the stage both back onto one).
+      let bx = 0, bz = 0, d = 99;
+      for (const [ox, oz] of alongX ? [[0, 1], [0, -1]] : [[1, 0], [-1, 0]]) {
+        let k = 0; while (k < 5 && floor(Math.floor(px + ox * (k + 0.5)), Math.floor(pz + oz * (k + 0.5)))) k += 0.5;
+        if (k < d) { d = k; bx = ox; bz = oz; }
+      }
+      if (d >= 5) continue;
+      const wx = alongX ? px : Math.floor(px + bx * (d + 0.5)) + (bx < 0 ? 1 : 0), wz = alongX ? Math.floor(pz + bz * (d + 0.5)) + (bz < 0 ? 1 : 0) : pz;
+      const at = (a, out, y, l, h, depth, list, color) => push(list, alongX ? px + a : wx - bx * out, y, alongX ? wz - bz * out : pz + a, alongX ? l : depth, h, alongX ? depth : l, color);
+      if (pr.kind === 'counter') {
+        const GLASS = [0x3f6b4a, 0x8a5a2a, 0x6b2430, 0x2f4a66, 0xc9a25a, 0x4a2e1c];
+        for (const y of [1.12, 1.52]) {
+          at(0, 0.14, y, len, 0.04, 0.24, B.rail);
+          for (let k = 0, n = Math.floor(len / 0.17); k < n; k++) {
+            const hv = (k * 2654435761 + Math.round(y * 100) * 40503) >>> 0;
+            if (hv % 7 === 0) continue;
+            const bh = 0.2 + (hv % 4) * 0.035;
+            at(-len / 2 + 0.1 + k * 0.17, 0.14 + ((hv >>> 3) % 3 - 1) * 0.04, y + 0.02 + bh / 2, 0.075, bh, 0.075, B.bottle, GLASS[(hv >>> 5) % GLASS.length]);
+          }
+        }
+        at(0, 0.05, 1.32, len + 0.2, 0.95, 0.05, B.wood);
+      } else {
+        for (let k = 0, n = Math.round(len / 0.2); k <= n; k++) at(-len / 2 + k * 0.2, 0.1 + (k % 2) * 0.05, 1.2, 0.2, 2.2, 0.12, B.curtain, k % 2 ? 0x6b1a24 : 0x7a1f2a);
+        at(0, 0.14, 2.3, len + 0.3, 0.2, 0.22, B.gold);
+      }
+    }
+    const batch = (list, mat) => {
+      if (!list.length) return;
+      const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, list.length), col = new THREE.Color();
+      list.forEach((o, i) => { im.setMatrixAt(i, o.m); if (o.color != null) im.setColorAt(i, col.setHex(o.color)); });
+      world.add(im);
+    };
+    batch(B.wood, lambert(0x4a2e1c)); batch(B.rail, lambert(0x6a4128)); batch(B.frame, lambert(0xb08a3e)); batch(B.gold, lambert(0xc9a25a));
+    batch(B.art, lambert(0xffffff)); batch(B.bottle, lambert(0xfffffe)); batch(B.curtain, lambert(0xfffffd));
+    // A rug under each table.
+    const tables = PROPS.filter((pr) => pr.kind === 'table');
+    if (tables.length) {
+      const rug = new THREE.InstancedMesh(new THREE.PlaneGeometry(2.7, 1.9), new THREE.MeshLambertMaterial({ map: rugTex }), tables.length);
+      const q = new THREE.Quaternion(), e = new THREE.Euler(), m = new THREE.Matrix4();
+      tables.forEach((pr, i) => rug.setMatrixAt(i, m.compose(new THREE.Vector3((pr.x + pr.w / 2) * S, 0.006, (pr.y + pr.h / 2) * S), q.setFromEuler(e.set(-Math.PI / 2, 0, (i % 2 ? 0.12 : -0.08) + (i % 3) * 0.05)), new THREE.Vector3(1, 1, 1))));
+      world.add(rug);
     }
   }
 
@@ -728,8 +981,18 @@ if (renderer) {
     return wrap;
   }
 
-  // ---------- Figures (placeholders until CC0 models are added) ----------
-  // Built from capsules and spheres in each character's colours. part names: legs, body, head, hair.
+  // ---------- Figures ----------
+  // Guards and townsfolk come from people3d.js (one skinned mesh each). figure() below is only the simple
+  // stand-in for ZAY, used if his model file can't be loaded.
+  const PEOPLE = makePeople();
+  const shadowGeo = new THREE.PlaneGeometry(0.95, 0.95);
+  function person(look) {
+    const g = PEOPLE.build(look);
+    const sh = mesh(shadowGeo, SHADOW_MAT, 0, 0.014, 0);
+    sh.rotation.order = 'YXZ'; sh.rotation.x = -Math.PI / 2; sh.renderOrder = 2;
+    g.add(sh); g.userData.shadow = sh;
+    return g;
+  }
   const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 4, 10);
   function figure({ coat, low, trim, skin, hair, hairStyle, sash, scale = 1, eyes = 0xf1ead9 }) {
     const g = new THREE.Group();
@@ -849,26 +1112,19 @@ if (renderer) {
   const hex = (s) => new THREE.Color(s).getHex();
   function npcFigure(n) {
     const L = npcLook(n);
-    return figure({ coat: hex(L.coat), low: hex(L.low), trim: hex(L.trim), skin: hex(L.skin), hair: hex(L.hair), hairStyle: L.hairStyle, sash: L.sash && hex(L.sash),
+    return person({ coat: hex(L.coat), low: hex(L.low), trim: hex(L.trim), skin: hex(L.skin), hair: hex(L.hair), hairStyle: L.hairStyle, sash: L.sash && hex(L.sash), who: n.who,
       eyes: n.who === 'severin' ? 0xdfe3ee : n.who === 'noe' ? 0xc99a52 : 0xf1ead9 });
   }
   function guardFigure(g) {
     const def = ENEMIES[g.kind] || ENEMIES.guard;
-    const f = figure({ coat: hex(def.coat), low: g.watch ? 0x21140f : 0x141a2c, trim: hex(def.trim), skin: 0x5a3b2b, hair: 0x1b2238, hairStyle: 'short', scale: 1.08 });
-    const inner = f.userData.inner;
-    // Helmet and a hand lantern.
-    inner.add(mesh(new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), lambert(0x2a2f3e), 0.02, 0.97, 0));
-    inner.add(mesh(new THREE.SphereGeometry(0.05, 8, 6), glowMat(0xffd88a), 0.2, 0.42, 0.2));
-    f.userData.coatMat = f.userData.body.material;
-    return f;
+    return person({ coat: hex(def.coat), low: g.watch ? 0x21140f : 0x141a2c, trim: hex(def.trim), skin: 0x5a3b2b, hair: 0x1b2238, hairStyle: 'short', scale: 1.04,
+      role: g.kind === 'captain' ? 'captain' : g.watch ? 'watch' : 'guard' });
   }
   function kidFigure() {
-    return figure({ coat: 0x4a4236, low: 0x24201a, trim: 0x8a7a5a, skin: 0x5a3424, hair: 0x160d09, hairStyle: 'short', scale: 0.7 });
+    return person({ coat: 0x4a4236, low: 0x24201a, trim: 0x8a7a5a, skin: 0x5a3424, hair: 0x160d09, hairStyle: 'short', scale: 0.68, role: 'kid' });
   }
   function fenceFigure() {
-    const f = figure({ coat: 0x3a3428, low: 0x1c1912, trim: 0xc9a25a, skin: 0x6a4430, hair: 0x1a120d, hairStyle: 'hat' });
-    f.userData.inner.add(mesh(new THREE.SphereGeometry(0.06, 8, 6), glowMat(0xffc670), 0.25, 0.7, 0.25));
-    return f;
+    return person({ coat: 0x3a3428, low: 0x1c1912, trim: 0xc9a25a, skin: 0x6a4430, hair: 0x1a120d, hairStyle: 'hat', role: 'fence' });
   }
 
   // Each game object gets its own figure the first time it shows up; figures whose object is gone are removed.
@@ -877,13 +1133,14 @@ if (renderer) {
   function releaseFigure(g) {
     scene.remove(g);
     if (g.userData.rig) { g.userData.rig.reset(); return; }
+    if (g.userData.people) { PEOPLE.release(g); return; }
     g.traverse((o) => {
       if (o.geometry && ![coinGeo, cardGeo, sparkGeo].includes(o.geometry)) o.geometry.dispose();
       if (o.userData.ownMat) o.material.dispose();
     });
   }
   function batchFigure(g) {
-    if (!g.userData.inner) return;
+    if (!g.userData.inner || g.userData.people) return;
     const groups = new Map();
     for (const part of [...g.userData.inner.children]) {
       if (!part.isMesh || part.children.length || part === g.userData.body || part === g.userData.ledger) continue;
@@ -922,17 +1179,46 @@ if (renderer) {
     sh.scale.set(1 + 0.9 * m, 1 - 0.1 * m, 1);
     sh.position.set(lx * 0.12 * m, 0.014, lz * 0.12 * m);
   }
-  function place(g, x, y, dir, dt, { lying = false } = {}) {
-    const u = g.userData;
+  function place(g, x, y, dir, dt, opts = {}) {
+    const u = g.userData, lying = !!opts.lying;
     const moved = Math.hypot(x - u.lx, y - u.ly);
     u.lx = x; u.ly = y;
     const speed = dt > 0 ? moved / dt : 0;
+    if (u.people) {
+      g.position.set(x * S, 0, y * S);
+      g.rotation.y += angDiff(g.rotation.y, -dir) * Traversal.damp(14, dt);
+      castShadow(g);
+      if (lying) { u.shadow.scale.set(1.5, 0.9, 1); u.shadow.position.set(-0.55 * u.inner.scale.x, 0.014, 0); u.shadow.rotation.y = 0; }
+      // Look at ZAY when he is close and in front (opts.watch), the way people glance at someone walking up.
+      let lookYaw = null;
+      if (opts.watch && !lying) {
+        const p = state.player, d = Math.hypot(p.x - x, p.y - y), a = angDiff(-g.rotation.y, Math.atan2(p.y - y, p.x - x));
+        if (d < opts.watch && d > 6 && Math.abs(a) < 1.9) lookYaw = a;
+      }
+      PEOPLE.animate(g, { dt: state.paused ? 0 : dt, t: state.time, moved, speed, lying, lookYaw, seated: opts.seated, stunned: opts.stunned, alert: opts.alert, carry: opts.carry, scan: opts.scan, rock: opts.rock });
+      return;
+    }
     u.walk += Math.min(moved, 12) / 11;
     u.stride = (u.stride || 0) + (Math.min(1, speed / 118) - (u.stride || 0)) * Traversal.damp(14, dt);
     g.position.set(x * S, 0, y * S);
     g.rotation.y += angDiff(g.rotation.y, -dir) * Traversal.damp(18, dt);
     castShadow(g);
-    if (u.rig) { u.rig.update(state.paused || !(state.mode === 'field' || fighting()) ? 0 : dt, fighting() ? 0 : speed, state.player); return; }
+    if (u.rig) {
+      // ZAY's body language: tumble through a roll, rise over a wall, bank into turns and lean into a run.
+      const p = state.player, still = state.paused || !(state.mode === 'field' || fighting()), air = p.z || 0;
+      const turn = dt > 0 ? angDiff(u.lastDir ?? dir, dir) / dt : 0; u.lastDir = dir;
+      const accel = dt > 0 ? (speed - (u.lastSpeed || 0)) / dt : 0; u.lastSpeed = speed;
+      const run = fighting() || air ? 0 : Math.min(1, speed / 185);
+      u.bank = (u.bank || 0) + (Math.max(-0.22, Math.min(0.22, turn * 0.07)) * run - (u.bank || 0)) * Traversal.damp(7, dt);
+      u.lean = (u.lean || 0) + (Math.max(-0.1, Math.min(0.14, accel / 4200)) * (fighting() ? 0 : 1) - (u.lean || 0)) * Traversal.damp(6, dt);
+      const rollK = p.dashT > 0 && !fighting() ? 1 - p.dashT / DASH_TIME : 0;
+      const land = p.landT > 0 ? Math.sin(Math.min(1, p.landT / 0.28) * Math.PI) * 0.07 : 0;
+      u.rig.pose({ lift: air - land, roll: rollK ? Math.PI * 2 * Ease.sineInOut(rollK) : 0, bank: u.bank, lean: u.lean });
+      if (u.ledger) u.ledger.position.y = 0.62 + air;
+      if (air) { const k = 1 / (1 + air * 0.5); u.shadow.scale.multiplyScalar(k); }
+      u.rig.update(still ? 0 : dt, fighting() ? 0 : speed, p);
+      return;
+    }
     const swing = Math.sin(u.walk) * 0.62 * u.stride;
     u.legL.rotation.z = swing; u.legR.rotation.z = -swing;
     u.armL.rotation.z = -swing * 0.75; u.armR.rotation.z = swing * 0.75;
@@ -1027,7 +1313,7 @@ if (renderer) {
     const sp = awarenessSprite(g);
     sp.visible = true;
     sp.userData.seen = frameNo;
-    sp.position.set(fig.position.x, 1.45, fig.position.z);
+    sp.position.set(fig.position.x, 1.62, fig.position.z);
     const key = g.state + Math.round(g.meter * 20) + (g.state === 'stunned' ? Math.floor(state.time * 10) : '');
     if (sp.userData.key === key) return;
     sp.userData.key = key;
@@ -1074,7 +1360,7 @@ if (renderer) {
 
   // ---------- Orbit / chase camera ----------
   let camYaw = 0, snapCamera = true, orbitHold = 0, orbitPointer = null;
-  let zoomBack = 3.7, pitch = 0.57, boom = 1, alertS = 0;
+  let zoomBack = 3.7, pitch = 0.57, boom = 1, alertS = 0, sprintK = 0, airY = 0, wasVaulting = false;
   const camPos = new THREE.Vector3(), look = new THREE.Vector3(), desired = new THREE.Vector3();
   const HEAD = 0.85;
   const canLook = () => use3D() && state.running && state.mode === 'field' && !state.paused && !state.over;
@@ -1083,7 +1369,7 @@ if (renderer) {
     orbitPointer = null;
   }
   function orbit(dx, dy) {
-    camYaw += dx; pitch = Math.max(0.24, Math.min(1.12, pitch + dy)); orbitHold = 3;
+    camYaw += dx; pitch = Math.max(0.1, Math.min(1.12, pitch + dy)); orbitHold = 3;
   }
   el.style.touchAction = 'none';
   let pointerX = 0, pointerY = 0;
@@ -1131,20 +1417,44 @@ if (renderer) {
     if (active && !cameraMove && orbitHold === 0 && orbitPointer === null && (p.moving || keys.has('arrowleft') || keys.has('arrowright') || stick.on)) {
       camYaw += angDiff(camYaw, p.dir) * Traversal.damp(4.5, dt);
     }
-    look.set(px, HEAD, pz);
-    desired.set(px - Math.cos(camYaw) * zoomBack, HEAD + Math.tan(pitch) * zoomBack, pz - Math.sin(camYaw) * zoomBack);
-    const safe = Traversal.cameraFraction(look, desired, cameraTop);
-    boom = snap || safe < boom ? safe : boom + (safe - boom) * Traversal.damp(4, dt);
-    desired.lerpVectors(look, desired, boom);
-    if (snap) camPos.copy(desired); else camPos.lerp(desired, Traversal.damp(14, dt));
-    // Check the smoothed position as well: smoothing can cut through a corner during an orbit.
-    const actual = Traversal.cameraFraction(look, camPos, cameraTop);
-    if (actual < 1) camPos.lerpVectors(look, camPos, actual);
+    // The camera eases back a little on a sprint, rises with ZAY over a wall, and dips as he lands.
+    const vaulting = !!p.vault;
+    sprintK += ((p.sprint && p.moving && !vaulting ? 1 : 0) - sprintK) * Traversal.damp(3, dt);
+    airY = snap ? 0 : airY + ((p.z || 0) * 0.75 - (p.landT > 0 ? Math.sin(Math.min(1, p.landT / 0.28) * Math.PI) * 0.09 : 0) - airY) * Traversal.damp(12, dt);
+    const back = zoomBack * (1 + 0.1 * sprintK);
+    const lookUp = Math.max(0, 0.5 - pitch) * 2.2;   // a low camera looks up at the roofs and towers
+    look.set(px, HEAD + airY + lookUp, pz);
+    if (wasVaulting && !vaulting) {
+      // Just landed with the wall at his back: swing round to whichever side has the clearest view of him.
+      let best = camYaw, bestK = -1;
+      for (const off of [0, 0.9, -0.9, 1.6, -1.6, 2.4, -2.4, Math.PI]) {
+        desired.set(px - Math.cos(p.dir + off) * back, HEAD + Math.tan(pitch) * back, pz - Math.sin(p.dir + off) * back);
+        const k = Traversal.cameraFraction(look, desired, cameraTop);
+        if (k > bestK + 0.12) { bestK = k; best = p.dir + off; }
+      }
+      camYaw = best; orbitHold = 2.5;
+    }
+    wasVaulting = vaulting;
+    desired.set(px - Math.cos(camYaw) * back, HEAD + airY + Math.tan(pitch) * back, pz - Math.sin(camYaw) * back);
+    if (vaulting) {
+      // In the air the camera flies over the wall with him; walls are checked again once he's down.
+      boom += (1 - boom) * Traversal.damp(7, dt);
+      desired.lerpVectors(look, desired, boom);
+      camPos.lerp(desired, Traversal.damp(9, dt));
+    } else {
+      const safe = Traversal.cameraFraction(look, desired, cameraTop);
+      boom = snap || safe < boom ? safe : boom + (safe - boom) * Traversal.damp(4, dt);
+      desired.lerpVectors(look, desired, boom);
+      if (snap) camPos.copy(desired); else camPos.lerp(desired, Traversal.damp(14, dt));
+      // Check the smoothed position as well: smoothing can cut through a corner during an orbit.
+      const actual = Traversal.cameraFraction(look, camPos, cameraTop);
+      if (actual < 1) camPos.lerpVectors(look, camPos, actual);
+    }
     camera.position.copy(camPos);
     camera.lookAt(look);
     const nearPlayer = camera.position.distanceTo(look) < 1.05;
     const zay = figures.get(p);
-    if (zay) zay.visible = !nearPlayer; // only when trapped between ZAY and a wall
+    if (zay) zay.visible = !nearPlayer || (vaulting && camera.position.distanceTo(look) > 0.5); // only when trapped between ZAY and a wall
   }
 
   // ---------- Battles in the street ----------
@@ -1165,14 +1475,14 @@ if (renderer) {
   }
   // A guard's arms in a fight: club raised on the wind-up, brought down on the blow; rocks back when hit.
   function poseFoe(f, c) {
-    const u = f.userData, a = B.anim;
+    const bones = f.userData.bones, a = B.anim;
     if (!c.alive) return;
     if (a && a.actor === c && a.type === 'hit') {
       const k = a.t / a.hit;
-      u.armR.rotation.z = k < 1 ? 0.4 + 2.4 * Ease.cubicOut(k) : 2.8 - Math.min(1, (a.t - a.hit) / 0.12) * 2.0;
-      u.armL.rotation.z = 0.5;
+      bones.armR.rotation.z = k < 1 ? 0.6 + 2.2 * Ease.cubicOut(k) : 2.8 - Math.min(1, (a.t - a.hit) / 0.12) * 2.1;
+      bones.foreR.rotation.z = k < 1 ? 0.9 : 0.25;
+      bones.spine.rotation.z = k < 1 ? 0.12 * Ease.cubicOut(k) : -0.22;
     }
-    if (c.flash > 0) u.inner.rotation.z = 0.28 * (c.flash / 0.25);
   }
   let battleCam = null;
   const _bv = new THREE.Vector3(), _bl = new THREE.Vector3();
@@ -1275,35 +1585,34 @@ if (renderer) {
     zay = figureFor(p, () => playableFigure(town));
     const zo = fighting() ? lungeOffset(state.party[0]) : ZERO;
     place(zay, p.x + zo.x, p.y + zo.y, p.dir, dt);
-    if (!zay.userData.rig && p.dashT > 0) { zay.userData.inner.rotation.z = -(1 - p.dashT / 0.17) * Math.PI * 2; zay.userData.inner.position.y = 0.25; }
+    if (!zay.userData.rig && p.dashT > 0) { zay.userData.inner.rotation.z = -(1 - p.dashT / DASH_TIME) * Math.PI * 2; zay.userData.inner.position.y = 0.25; }
     if (zay.userData.tail) zay.userData.tail.rotation.y = Math.sin(t * 5 + p.step) * 0.5;
     zay.userData.ledger.visible = !!p.hasLedger;
-    const faded = p.hidden || (p.invuln > 0 && p.dashT <= 0 && Math.floor(t * 20) % 2 === 0);
+    const faded = p.hidden || (p.invuln > 0 && p.dashT <= 0 && !p.vault && Math.floor(t * 20) % 2 === 0);
     zay.traverse((o) => { if (o.isMesh && o.material && !o.material.isMeshBasicMaterial) { if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = true; } o.material.transparent = faded; o.material.opacity = faded ? 0.5 : 1; } });
-    zayLight.position.set(p.x * S + 1.7, 3.6, p.y * S + 1.5);
-    zayLight.target.position.set(p.x * S, 0.7, p.y * S);
+    zayLight.position.set(p.x * S + 1.7, 3.6 + (p.z || 0), p.y * S + 1.5);
+    zayLight.target.position.set(p.x * S, 0.7 + (p.z || 0), p.y * S);
 
     // Guards
     for (const g of state.guards) {
       const f = figureFor(g, () => guardFigure(g));
       const foe = fighting() ? B.enemies.find((e) => e.guard === g) : null;
       const go = foe ? lungeOffset(foe) : ZERO;
-      place(f, g.x + go.x, g.y + go.y, g.dir, dt, { lying: g.state === 'down' || (foe && !foe.alive) });
+      const wary = g.state === 'alert' ? 1 : g.state === 'suspicious' || g.state === 'search' ? 0.45 : 0;
+      place(f, g.x + go.x, g.y + go.y, g.dir, dt, { lying: g.state === 'down' || (foe && !foe.alive), stunned: g.state === 'stunned', carry: true, scan: !foe,
+        alert: foe ? 0.6 : wary, watch: foe || wary ? 400 : 0, rock: foe && foe.flash > 0 ? 0.28 * (foe.flash / 0.25) : 0 });
       if (foe) poseFoe(f, foe);
-      f.userData.coatMat.color.setHex(g.windup > 0 || (foe && foe.flash > 0) ? 0x5a2430 : hex((ENEMIES[g.kind] || ENEMIES.guard).coat));
+      const hot = g.windup > 0 || (foe && foe.flash > 0);
+      f.userData.mat.color.setRGB(1, hot ? 0.42 : 1, hot ? 0.46 : 1);
       if (fighting()) { if (g.__cone) g.__cone.visible = false; if (g.__mark) g.__mark.visible = false; continue; }
       updateCone(g);
       updateMark(g, f);
     }
     // People
-    for (const n of state.npcs || []) {
-      const f = figureFor(n, () => npcFigure(n));
-      place(f, n.x, n.y, n.dir, dt);
-      if (npcLook(n).seated) { f.userData.inner.position.y = -0.2; f.userData.legL.rotation.z = f.userData.legR.rotation.z = 1.4; }
-    }
-    for (const w of state.walkers || []) place(figureFor(w, () => npcFigure(w)), w.x, w.y, w.dir, dt);
+    for (const n of state.npcs || []) place(figureFor(n, () => npcFigure(n)), n.x, n.y, n.dir, dt, { seated: !!npcLook(n).seated, watch: 130 });
+    for (const w of state.walkers || []) place(figureFor(w, () => npcFigure(w)), w.x, w.y, w.dir, dt, { watch: 60 });
     if (KID.x > -1e4) place(figureFor(KID, kidFigure), KID.x, KID.y, Math.atan2(p.y - KID.y, p.x - KID.x), dt);
-    if (FENCE.x > -1e4 && FENCE.x) place(figureFor(FENCE, fenceFigure), FENCE.x, FENCE.y, Math.PI / 2, dt);
+    if (FENCE.x > -1e4 && FENCE.x) place(figureFor(FENCE, fenceFigure), FENCE.x, FENCE.y, Math.PI / 2, dt, { watch: 130 });
 
     // Pickups and things
     for (const c of state.coins) {
@@ -1366,7 +1675,7 @@ if (renderer) {
       live.add(b);
       let sp = barkSprites.get(b);
       if (!sp) { sp = textSprite(wrap(b.text), { font: '600 24px Barlow, sans-serif', fg: '#1a1206', height: 0.16 * wrap(b.text).length + 0.04 }); scene.add(sp); barkSprites.set(b, sp); }
-      sp.position.set(b.anchor.x * S, 1.55 + sp.scale.y / 2, b.anchor.y * S);
+      sp.position.set(b.anchor.x * S, 1.62 + sp.scale.y / 2, b.anchor.y * S);
       sp.material.opacity = Math.min(1, b.t * 5, (b.dur - b.t) * 3);
     }
     for (const [b, sp] of barkSprites) if (!live.has(b)) { scene.remove(sp); sp.material.map.dispose(); sp.material.dispose(); barkSprites.delete(b); }
@@ -1378,7 +1687,7 @@ if (renderer) {
       if (target) {
         const sp = promptSprite(interactLabel(target));
         sp.visible = true;
-        sp.position.set(target.x * S, 1.32 + Math.sin(t * 5) * 0.03, target.y * S);
+        sp.position.set(target.x * S, (figures.get(target)?.userData.people ? 1.52 : 1.32) + Math.sin(t * 5) * 0.03, target.y * S);
       }
     }
 
@@ -1404,7 +1713,7 @@ if (renderer) {
     LIGHTS.forEach((L, i) => {
       const l = near[i] && near[i][0];
       if (!l) { L.intensity = 0; return; }
-      L.position.set(l.x * S, 1.9, l.y * S);
+      L.position.set(l.x * S, indoorScene ? 1.6 : 1.9, l.y * S);
       L.distance = l.r * S * 1.6;
       L.visible = !gfxLow() || i < 3;
       L.intensity = 7 * flick * (mood?.lamps ?? 1);
@@ -1438,5 +1747,5 @@ if (renderer) {
     }
   }
 
-  window.R3D = { ready: true, render, project, startBattle: () => { snapCamera = false; startBattleCam(); }, battleCam: () => battleCam && { dist: battleCam.dist, h: battleCam.h, score: battleCam.score }, get autoLow() { return autoLow; }, playHero: role => heroRig?.play(role), hero: () => heroRig?.debug() || { loaded: false, error: heroError }, heading: () => camYaw, cancelOrbit, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ post: post.on, lighting: atmosphere.current, quality: renderer.shadowMap.enabled ? 'high' : 'low', calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
+  window.R3D = { ready: true, render, project, startBattle: () => { snapCamera = false; startBattleCam(); }, battleCam: () => battleCam && { dist: battleCam.dist, h: battleCam.h, score: battleCam.score }, get autoLow() { return autoLow; }, playHero: role => heroRig?.play(role), hero: () => heroRig?.debug() || { loaded: false, error: heroError }, heading: () => camYaw, cancelOrbit, orbit, landmark: () => landmarkAt, setLook, look: LOOK, scene, canvas: el, resetCamera: () => { snapCamera = true; }, debug: () => ({ people: [...figures.values()].filter((f) => f.userData.people).length, landmark: landmarkAt, post: post.on, lighting: atmosphere.current, quality: renderer.shadowMap.enabled ? 'high' : 'low', calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, zoom: zoomBack, boom, clearance: Traversal.cameraFraction(look, camera.position, cameraTop), yaw: camYaw, tris: renderer.info.render.triangles, cam: camera.position.toArray().map((v) => +v.toFixed(2)), look: look.toArray().map((v) => +v.toFixed(2)) }) };
 }

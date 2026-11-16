@@ -16,7 +16,7 @@ The story source is the Bellemorne Master Canon in the Obsidian vault (`11 Books
 |---|---|---|---|
 | Move (3D view) | WASD relative to camera; arrows retain forward/back/turn | Wheel: push up to walk, sideways to turn, down to step back (push further to go faster) | D-pad or left stick, same as keys |
 | Move (Classic view) | Arrow keys or WASD | Wheel: ZAY walks the way you push | D-pad or left stick |
-| Look around (3D) | Left-drag view; wheel or +/− zoom; C recenter | Drag the open view | — |
+| Look around (3D) | Left-drag view (drag down to look up at the rooftops); wheel or +/− zoom; C recenter | Drag the open view | — |
 | Sprint (noisy) | Shift | Hold Sprint | Hold LB or RB |
 | Interact, talk, pick a quest action, or take down a guard from behind | E | Use | A |
 | Throw a card (noise lure; stuns on a direct hit) | Q or right-click (3D: straight ahead; Classic: aims at the cursor) | Card (throws where you face) | X |
@@ -186,7 +186,7 @@ The field is drawn in 3D by default, with a chase camera behind ZAY (`render3d.j
 - **Camera:** follows behind and above ZAY, with a stable heading during WASD movement. It sweeps a camera-sized volume against buildings, roof heights, furniture and projecting balconies, pulls in immediately, and eases back out. The smoothed camera path is checked too, preventing corner cutting. Very close cameras hide ZAY briefly to keep the view clear. On phones the view is shifted up so ZAY stands above the thumb controls.
 - **What's drawn:** the same map as Classic, with wet cobbles, varied plaster/brick buildings (cut stone on the Veyrane estate), pitched roofs, pale cornices, framed windows, louvered shutters, scrollwork balconies, flower boxes and layered planting. Existing market/street furniture, boat, exits, labels, awareness markers and interaction prompts remain.
 - **Market stalls, stools and kegs are real models:** CC0 models by Polygonal Mind (`models/props.glb`, 644 KB, loaded by `vendor/three/addons/GLTFLoader.js`). Food and mask stalls use the market booths, facing the open street and fitted to the stall's tiles. Tables get stools, and the Crooked Halo bar gets kegs. If the file can't load, the simple boxes are used instead.
-- **ZAY's playable 3D mock:** a custom MPFB-based CC0 skinned prototype with locs, pointed ears, a coat and animated tail, using idle/walk/run, dodge, throw and takedown clips. His name, story, portraits and abilities remain intact. NPCs keep their procedural figures, and failed downloads use the procedural ZAY fallback. The earlier KayKit rogue is retained as an alternative asset. Model configuration and animation mappings live in `hero3d.js`; see `docs/graphics/zay-3d-mock.md` for the prototype's limits and `docs/graphics/major-overhaul.md` for the replacement workflow.
+- **ZAY's playable 3D mock:** a custom MPFB-based CC0 skinned prototype with locs, pointed ears, a coat and animated tail, using idle/walk/run, dodge, throw and takedown clips. His name, story, portraits and abilities remain intact. Other people are built by `people3d.js`, and failed downloads use the procedural ZAY fallback. The earlier KayKit rogue is retained as an alternative asset. Model configuration and animation mappings live in `hero3d.js`; see `docs/graphics/zay-3d-mock.md` for the prototype's limits and `docs/graphics/major-overhaul.md` for the replacement workflow.
 - **Lighting and quality:** Options → Scene lighting selects Night, Dusk or Day, with generated skies, environment lighting, fog and wet-surface response. These are visual previews; stealth still uses the existing night rules. Low quality reduces resolution, local lights, distant decorations and mist, and disables directional shadows. Settings persist on this device.
 - **Night look (phase 1):** warm lantern light against cool shadows, real cobbles with relief, lantern halos and light pools, glowing framed windows, soft lantern-aware shadows and low mist, drawn by `light3d.js` with no extra image files. See `docs/graphics/night-lighting-phase1.md` for the before/after pictures, the tone-mapping comparison and the performance numbers.
 - **Polish pass:** iron galleries on street-facing windows, garden plants, static moon shadows and animated river highlights above the painted ground. Static character parts are batched; district rebuilds dispose their GPU resources. See `docs/graphics/third-person-polish.md` for provenance, validation and remaining work.
@@ -194,7 +194,11 @@ The field is drawn in 3D by default, with a chase camera behind ZAY (`render3d.j
 - **Trees are solid.** `plantTrees` in `game.js` plants them by rule rather than in Tiled: on open garden ground and in the middle of wide squares, never within about two tiles of any Tiled object or patrol/walking route. A tree blocks its tile in both views (it joins `FURN`, like furniture), so guards path round it. Classic draws it as a crown seen from above.
 - **Glow** (`post3d.js`, High only): bloom round lanterns and windows, a cool-shadow / warm-highlight grade, a vignette, and a faint red edge while guards are chasing. Low draws straight to the screen.
 - **No WebGL:** if the device can't run 3D, the game stays in Classic and Options says so.
-- Tune it in `render3d.js`: `WALL_H` (building height), `zoomBack` / `pitch` (camera distance and angle), and `TURN_RATE` in `game.js`.
+- **People** (`people3d.js`): guards, the city watch, captains, Noe, Severin, regulars, passers-by, the Soot kid and the fence are jointed figures made in code (no model files): one skinned mesh each, coloured from the same looks as Classic (`people.js`, `characters.js`). They walk with bending knees and swinging arms, breathe when standing, glance at ZAY when he comes close, sit, stagger when stunned and topple when knocked out. Guards carry a lantern and a baton, which comes up when they're alert. `tools/people-review.html` shows the whole line-up (add `?pose=walk`, `sit`, `down`, `alert` or `stunned`).
+- **ZAY's movement:** Roll (Space) is a real forward tumble lasting about a third of a second and covering the same ground as before; with WASD it goes the way you push. The tail-vault is an arc over the wall using his jump clip, with the camera rising over the wall and settling on a clear side when he lands (Classic still hops across). His walk and run clips are matched to his real speed by measuring the feet in each clip (`footBones`, `runAbove` in `hero-config.js`), so his feet slide far less; he banks into turns and leans as he speeds up. The camera eases back a little on a sprint. A timed block in battle plays his block clip.
+- **Skyline:** some houses have a third or fourth floor (never garden walls, vault walls or rooms), each outdoor district has a landmark on its biggest building (a clock tower over the Lantern Quarter and the Veyrane estate, a harbour light over the River Quarter), and dark roofs, spires and lit windows carry on beyond the edge of the map. None of it changes where you can walk. Drag the view down to look up at it.
+- **The Crooked Halo's room:** wood panelling, framed pictures, a shelf of bottles behind the bar, a curtain behind the stage, a rug under each table and candle stands instead of street lamps.
+- Tune it in `render3d.js`: `WALL_H` (building height), `STOREY` (height of an extra floor), `zoomBack` / `pitch` (camera distance and angle), and `TURN_RATE` in `game.js`.
 
 ## 2.5D look (Classic view)
 
@@ -247,6 +251,8 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 - `game.js` — map, lighting, guards, stealth, the Classic renderer, and the switch into battles
 - `traversal.js` — tested velocity and camera-clearance math
 - `render3d.js` — the third-person 3D view (Three.js)
+- `people3d.js` — guards, Noe, Severin and townsfolk in 3D: jointed figures built in code, and their animation
+- `tools/people-review.html` — line-up of every person, for checking looks and poses
 - `streetlife3d.js` — doors, signs, chimney smoke, lantern strings, docks and trees in 3D
 - `post3d.js` — the High-quality finishing pass (bloom, colour grade, vignette)
 - `minimap.js` — the minimap and the district name card
@@ -264,7 +270,7 @@ In the Codex cloud environment, run `python3 -m http.server 5192 --bind 127.0.0.
 
 `npm test` runs the movement/camera math regressions. `npm run check` checks JavaScript syntax and all Tiled map structures. There is still no build step and no runtime package installation.
 
-`npm run test:smoke` (`tests/smoke.cjs`) is a second real-browser check that drives the game loop in fixed steps, so it also passes on slow machines and software graphics: movement, collision from 16 directions, camera drag/zoom/clearance, all four districts (exits reachable, trees solid, patrols moving), takedown, cards, coins, bag, pause, save, talking to Noe, a battle, Classic, Low/High/Auto graphics and GPU resource counts across district changes. It needs Playwright: `npm i -g playwright`, then `NODE_PATH=$(npm root -g) npm run test:smoke`.
+`npm run test:smoke` (`tests/smoke.cjs`) is a second real-browser check that drives the game loop in fixed steps, so it also passes on slow machines and software graphics: movement, collision from 16 directions, camera drag/zoom/clearance, all four districts (exits reachable, trees solid, patrols moving), the roll, the wall vault's arc and landing, jointed figures, a landmark in each outdoor district, takedown, cards, coins, bag, pause, save, talking to Noe, a battle, Classic, Low/High/Auto graphics and GPU resource counts across district changes. It needs Playwright: `npm i -g playwright`, then `NODE_PATH=$(npm root -g) npm run test:smoke`.
 
 For the optional real-browser suite, make `playwright-core` available separately and run:
 
