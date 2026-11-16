@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- Line-up of every person made by people3d.js, for checking looks and poses. Open through the local server:
+     http://localhost:5192/tools/people-review.html?pose=walk   (pose: idle, walk, sit, down, alert, stunned; add &side=1 for a side view) -->
+<meta charset="utf-8"><title>People review</title>
+<style>html,body{margin:0;background:#1b2030;overflow:hidden}canvas{display:block}</style>
+<script type="module">
+import * as THREE from '../vendor/three/three.module.min.js';
+import { makePeople } from '../people3d.js';
+const q = new URLSearchParams(location.search), pose = q.get('pose') || 'idle';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x232a3d);
+scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x4a3d33, 1.6));
+const sun = new THREE.DirectionalLight(0xfff0dd, 2.2); sun.position.set(4, 6, 5); scene.add(sun);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 10), new THREE.MeshStandardMaterial({ color: 0x3a3f4d })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+const P = makePeople(), hex = (s) => new THREE.Color(s).getHex();
+const L = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'string' && v[0] === '#' ? hex(v) : v]));
+const LOOKS = [
+  L({ coat: '#e6dccb', low: '#2a2320', trim: '#6b3d27', sash: '#7a1f2a', skin: '#5a3424', hair: '#160d09', hairStyle: 'curls', who: 'noe', eyes: 0xc99a52 }),
+  L({ coat: '#26262c', low: '#17171b', trim: '#b9bcc8', sash: '#4b2552', skin: '#4b3b3e', hair: '#a3a3ab', hairStyle: 'locs', who: 'severin', eyes: 0xdfe3ee }),
+  L({ coat: '#3a2d4a', low: '#1d1822', trim: '#c9a25a', skin: '#6a4430', hair: '#1a120d', hairStyle: 'hat' }),
+  L({ coat: '#2f4a3e', low: '#18241f', trim: '#d8c9a0', skin: '#4e3022', hair: '#140c08', hairStyle: 'short' }),
+  L({ coat: '#5a2e2e', low: '#251616', trim: '#e0b070', skin: '#7a5038', hair: '#2a1a10', hairStyle: 'wrap' }),
+  L({ coat: '#26304d', low: '#141a2c', trim: '#b08a3e', skin: '#5a3b2b', hair: '#1b2238', hairStyle: 'short', scale: 1.04, role: 'guard' }),
+  L({ coat: '#4a2a24', low: '#21140f', trim: '#c98a3a', skin: '#5a3b2b', hair: '#1b2238', hairStyle: 'short', scale: 1.04, role: 'watch' }),
+  L({ coat: '#26304d', low: '#141a2c', trim: '#e9b65a', skin: '#5a3b2b', hair: '#1b2238', hairStyle: 'short', scale: 1.04, role: 'captain' }),
+  L({ coat: '#4a4236', low: '#24201a', trim: '#8a7a5a', skin: '#5a3424', hair: '#160d09', hairStyle: 'short', scale: 0.68, role: 'kid' }),
+  L({ coat: '#3a3428', low: '#1c1912', trim: '#c9a25a', skin: '#6a4430', hair: '#1a120d', hairStyle: 'hat', role: 'fence' })
+];
+const only = q.get('only') ? q.get('only').split(',').map(Number) : null;
+const figs = (only ? only.map((i) => LOOKS[i]) : LOOKS).map((look, i, all) => { const g = P.build(look); g.position.set(0, 0, (i - (all.length - 1) / 2) * 0.72 + (q.get('side') ? i * 0.5 : 0)); g.rotation.y = q.get('side') ? Math.PI / 2 : q.get('back') ? Math.PI : 0.35; g.userData.seed = i; g.userData.walk = q.get('side') ? i * 1.05 : 0; scene.add(g); return g; });
+const camera = new THREE.PerspectiveCamera(+(q.get('fov') || 12), innerWidth / innerHeight, 0.1, 50);
+camera.position.set(11.5, 1.6, +(q.get('x') || 0)); camera.lookAt(0, +(q.get('y') || 0.68), +(q.get('x') || 0));
+let t = 0;
+window.step = (dt) => {
+  t += dt;
+  for (const g of figs) {
+    const guard = ['guard', 'watch', 'captain'].includes(g.userData.role);
+    P.animate(g, { dt, t, moved: pose === 'walk' ? 105 * dt : 0, speed: pose === 'walk' ? 105 : 0, lying: pose === 'down', seated: pose === 'sit', stunned: pose === 'stunned', alert: pose === 'alert' ? 1 : 0, carry: guard, scan: guard, lookYaw: null });
+  }
+  renderer.render(scene, camera);
+};
+for (let i = 0; i < 90; i++) window.step(1 / 60);
+window.ready = true;
+if (!q.get('still')) (function loop() { window.step(1 / 60); requestAnimationFrame(loop); })();
+</script>

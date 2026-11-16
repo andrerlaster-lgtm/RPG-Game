@@ -206,7 +206,7 @@ export function makeStreetLife({ wallH = 2.4 } = {}) {
     const chimneys = [], caps = [], smokeAt = [];
     for (const r of R) {
       if (Math.min(r.w, r.h) < 2 || r.hv % 3 === 0) continue;
-      const alongX = r.w >= r.h, span = alongX ? r.h : r.w, len = alongX ? r.w : r.h, y1 = wallH + Math.min(1.1, span * 0.42);
+      const alongX = r.w >= r.h, span = alongX ? r.h : r.w, len = alongX ? r.w : r.h, y1 = wallH + (ctx.riseAt ? ctx.riseAt(r.x, r.y) : 0) + Math.min(1.1, span * 0.42);
       const a = len * (0.25 + frac(r.hv, 2) * 0.5), b = span * (0.5 + (r.hv % 2 ? 0.16 : -0.16));
       const cx = alongX ? r.x + a : r.x + b, cz = alongX ? r.y + b : r.y + a, top = y1 + 0.28;
       chimneys.push({ p: [cx, top - 0.5, cz], s: [0.3, 1.0, 0.3] }); caps.push({ p: [cx, top + 0.02, cz], s: [0.36, 0.06, 0.36] });

@@ -6,6 +6,10 @@
 
 Changes: repaired PBR texture connections, removed false emission, compressed/resized textures, smoothed split normals, baked tangents, removed horizontal root drift and added three ZAY gameplay gestures. Source and runtime SHA-256 hashes, evaluation, reproduction instructions and limitations are recorded in `docs/graphics/zay-shadow-rogue.md`. The source archive is not redistributed. The user's reference image was used for visual direction only and is not included.
 
+## People, landmarks and interiors (original, no third-party material)
+
+The guards, townsfolk and named characters in `people3d.js`, the clock towers, harbour light and far skyline in `render3d.js`, and the Crooked Halo's panelling, shelves, rugs and curtain are generated in code for this game. No outside models, textures or code were added for them. ZAY's wall vault and battle block use the `Regular_Jump` and `Block6` clips already inside the Shadow pack file described above.
+
 ## Temporary ZAY rig — KayKit Adventurers 1.0 (CC0)
 
 `models/zay/rogue.glb` is the unmodified `Rogue_Hooded.glb` from [Kay Lousberg's official KayKit Adventurers repository](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0), commit `672074b73ba276876a19e8816ecdc5241817ab47`, under `addons/kaykit_character_pack_adventures/Characters/gltf/`.

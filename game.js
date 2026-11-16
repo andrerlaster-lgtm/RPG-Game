@@ -549,8 +549,28 @@ function resetTraversal() {
   if (window.R3D) R3D.cancelOrbit();
 }
 const TURN_RATE = 3;   // radians a second, turning in the 3D view
+const DASH_TIME = 0.3, DASH_SPEED = 295;      // the roll: about 88 px, the same distance as the old 0.17 s dash
+const VAULT_TIME = 0.72, VAULT_HEIGHT = 3.4;  // the tail-vault: seconds in the air, and how high (tiles; a wall is 2.4)
+// The tail-vault in the 3D view: a short crouch, then an arc over the wall to the far side. ZAY can't be
+// steered or caught while he's in the air. (Classic view still hops straight across.)
+function stepVault(p, dt) {
+  const v = p.vault;
+  v.t += dt;
+  const k = Math.min(1, v.t / VAULT_TIME), fly = Math.max(0, (k - 0.16) / 0.84);
+  p.x = v.ax + (v.bx - v.ax) * fly; p.y = v.ay + (v.by - v.ay) * fly;
+  p.z = 4 * VAULT_HEIGHT * fly * (1 - fly);
+  p.dir += angDiff(p.dir, Math.atan2(v.by - v.ay, v.bx - v.ax)) * Traversal.damp(20, dt);
+  p.vx = p.vy = 0; p.moving = false;
+  p.invuln = Math.max(p.invuln, 0.12);
+  if (k >= 1) {
+    p.x = v.bx; p.y = v.by; p.z = 0; p.vault = null; p.landT = 0.28;
+    playStep(true); play('cloth2', { vol: 0.6 });
+  }
+}
 function updatePlayer(dt) {
   const p = state.player;
+  if (p.landT > 0) p.landT -= dt;
+  if (p.vault) { p.dashCd -= dt; p.slashCd -= dt; p.slashT -= dt; stepVault(p, dt); return; }
   let mx = 0, my = 0;
   const wheel = stick.on && Math.hypot(stick.x, stick.y) > 0.15;
   const cameraMove = use3D() && ['w', 'a', 's', 'd'].some((key) => keys.has(key));
@@ -595,7 +615,8 @@ function updatePlayer(dt) {
 
   p.dashCd -= dt; p.slashCd -= dt; p.invuln -= dt; p.slashT -= dt;
   if ((pressed.has(' ') || pressed.has('touch-dash')) && p.dashCd <= 0) {
-    p.dashT = 0.17; p.dashCd = 0.8; p.invuln = Math.max(p.invuln, 0.2);
+    p.dashT = DASH_TIME; p.dashCd = 0.8; p.invuln = Math.max(p.invuln, DASH_TIME + 0.03);
+    if (cameraMove && (mx || my)) p.dir = Math.atan2(my, mx);   // roll the way you're pushing, not the way he happened to face
     play('cloth2', { vol: 0.7 }); play('swish');
   }
   const oldX = p.x, oldY = p.y;
@@ -603,7 +624,7 @@ function updatePlayer(dt) {
     const dashDt = Math.min(dt, p.dashT);
     p.dashT = Math.max(0, p.dashT - dt);
     p.vx = p.vy = 0;
-    move(p, Math.cos(p.dir) * 520 * dashDt, Math.sin(p.dir) * 520 * dashDt);
+    move(p, Math.cos(p.dir) * DASH_SPEED * dashDt, Math.sin(p.dir) * DASH_SPEED * dashDt);
   } else {
     // Reach walk speed in ~0.12 s and brake in ~0.07 s. Classic retains direct movement.
     const v = use3D() ? Traversal.velocity(p.vx || 0, p.vy || 0,
@@ -720,9 +741,15 @@ function use() {
 function vaultWall(v) {
   const p = state.player;
   const dest = dist(v.a, p) < dist(v.b, p) ? v.b : v.a;
-  p.x = dest.x; p.y = dest.y;
   p.vx = p.vy = 0;
-  if (window.R3D) R3D.resetCamera();
+  if (use3D()) {
+    p.vault = { ax: p.x, ay: p.y, bx: dest.x, by: dest.y, t: 0 };
+    p.dashT = 0;
+    R3D.playHero('jump');
+  } else {
+    p.x = dest.x; p.y = dest.y;
+    if (window.R3D) R3D.resetCamera();
+  }
   effect('vault', v.wall.x, v.wall.y);
   play('cloth', { vol: 0.9 }); play('swish', { delay: 0.1 });
   toast('Tail on the ledge, over the wall.');

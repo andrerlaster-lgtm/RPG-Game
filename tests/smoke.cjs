@@ -75,6 +75,8 @@ const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok 
   check('Shift sprints (faster than walking, unless a wall is in the way)', sprinted > walked || sprinted > 30, `${sprinted.toFixed(0)} px in 1 s`);
   const beforeRoll = await sim(0.05); await sim(0.3, [], [' ']);
   check('Space rolls', await ev(() => state.player.dashCd > 0));
+  const roll = await ev(() => { const p = state.player; p.dashCd = 0; p.dashT = 0; const x = p.x, y = p.y; pressed.add(' '); let steps = 0; for (let i = 0; i < 60; i++) { updatePlayer(1 / 60); pressed.clear(); if (p.dashT > 0) steps++; } return { secs: steps / 60, moved: Math.hypot(p.x - x, p.y - y) }; });
+  check('the roll is a real tumble, about a third of a second (not a blink)', roll.secs > 0.25 && roll.secs < 0.4 && roll.moved < 100, `${roll.secs.toFixed(2)} s, ${roll.moved.toFixed(0)} px`);
   const walls = await ev(() => { let bad = 0; const p = state.player; for (let k = 0; k < 16; k++) { p.dir = k * 0.3927; keys.add('arrowup'); for (let i = 0; i < 200 && state.mode === 'field'; i++) { updatePlayer(1 / 60); pressed.clear(); if (isSolidAt(Math.floor(p.x / TILE), Math.floor(p.y / TILE))) bad++; } keys.delete('arrowup'); } return bad; });
   check('collision: running at walls from 16 directions never ends up inside one', walls === 0, `${walls} bad frames`);
   void beforeRoll;
@@ -104,6 +106,7 @@ const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok 
     check(`${id}: loads and draws`, info.mode === 'field' && info.d.calls > 20, `${info.d.calls} calls, ${info.d.tris} tris, ${info.trees} trees`);
     check(`${id}: every exit can still be walked to`, info.exits.every(Boolean));
     check(`${id}: trees are solid`, info.treesSolid);
+    check(`${id}: ${id === 'crooked-halo' ? 'no tower indoors' : 'has a landmark tower on a building'}`, await until((indoors) => { const L = R3D.landmark(); return indoors ? !L : !!L && L.x < W && L.z < H && grid[Math.floor(L.z)][Math.floor(L.x)] === '#' && R3D.debug().landmark === L; }, id === 'crooked-halo'));
     if (info.guards) {
       const moved = await ev(() => { const at = state.guards.map((g) => [g.x, g.y]); const p = state.player, keep = [p.x, p.y]; p.x = -9999; p.y = -9999; for (let i = 0; i < 60 * 25; i++) { state.time += 1 / 60; for (const g of state.guards) updateGuard(g, 1 / 60); } p.x = keep[0]; p.y = keep[1]; return state.guards.filter((g, i) => !g.escort && g.route && g.route.length > 1).map((g) => Math.hypot(g.x - at[state.guards.indexOf(g)][0], g.y - at[state.guards.indexOf(g)][1])); });
       // (One River Quarter watchman has never left his post, in the original game too, so this asks for most, not all.)
@@ -114,6 +117,17 @@ const check = (name, ok, detail = '') => { if (!ok) failed++; console.log(`${ok 
 
   // ---- Game systems ----
   await ev(() => enterDistrict('crown-estate', 'start')); await page.waitForTimeout(1800); await skipDialog();
+  check('guards and townsfolk are drawn as jointed figures', await until(() => R3D.debug().people >= state.guards.length && R3D.debug().people > 0), `${await ev(() => R3D.debug().people)} figures`);
+  // The tail-vault: an arc over the wall that ends on the far side (stepped by hand, like the walking checks).
+  const vault = await ev(() => {
+    const v = VAULTS[0], p = state.player, keep = state.guards; state.guards = [];
+    p.x = v.a.x; p.y = v.a.y; p.vx = 118; vaultWall(v);
+    let peak = 0, steps = 0, steered = 0; keys.add('s');
+    while (p.vault && steps < 200) { updatePlayer(1 / 60); pressed.clear(); peak = Math.max(peak, p.z || 0); steps++; }
+    keys.delete('s'); state.guards = keep;
+    return { peak, secs: steps / 60, end: Math.hypot(p.x - v.b.x, p.y - v.b.y), z: p.z || 0, v: Math.hypot(p.vx, p.vy), inWall: isSolidAt(Math.floor(p.x / TILE), Math.floor(p.y / TILE)) };
+  });
+  check('the tail-vault arcs over the wall and lands on the far side', vault.peak > 2.6 && vault.end < 1 && vault.z === 0 && !vault.inWall && vault.secs > 0.4 && vault.secs < 1.2, `peak ${vault.peak.toFixed(1)} tiles, ${vault.secs.toFixed(2)} s, ${vault.end.toFixed(0)} px from the mark`);
   const ko = await ev(() => { const g = state.guards[0], p = state.player; g.state = 'patrol'; g.dir = 0; p.x = g.x - 24; p.y = g.y; const before = state.kos; use(); return { down: g.state === 'down', kos: state.kos - before }; });
   check('takedown from behind knocks a guard out', ko.down && ko.kos === 1);
   const card = await ev(() => { const n = state.player.cards; throwCard(false); return n - state.player.cards === 1 && state.projectiles.length === 1; });

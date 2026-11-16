@@ -209,7 +209,7 @@ async function record(name,fn){const data=await fn();results.push({name,passed:t
       await page.evaluate(()=>{B.result='run';endBattle();});await page.waitForFunction(()=>!R3D.canvas.hidden);
     });
     await record('tail vault preserves the established endpoint and resets momentum',async()=>{
-      const result=await page.evaluate(()=>{state.paused=true;const v=VAULTS[0];state.player.x=v.a.x;state.player.y=v.a.y;state.player.vx=118;vaultWall(v);R3D.render(1/60);return {x:state.player.x,y:state.player.y,v:state.player.vx,expected:v.b,debug:R3D.debug()};});
+      const result=await page.evaluate(()=>{state.paused=true;const v=VAULTS[0];state.player.x=v.a.x;state.player.y=v.a.y;state.player.vx=118;vaultWall(v);for(let i=0;i<120&&state.player.vault;i++)updatePlayer(1/60);R3D.render(1/60);return {x:state.player.x,y:state.player.y,v:state.player.vx,expected:v.b,debug:R3D.debug()};});
       assert.equal(result.x,result.expected.x);assert.equal(result.y,result.expected.y);assert.equal(result.v,0);assert.ok(result.debug.cam.every(Number.isFinite));
       await page.evaluate(()=>{state.paused=false;});
     });
